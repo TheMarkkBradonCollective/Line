@@ -1,0 +1,26 @@
+node_modules
+.next
+out
+dist
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# SQLite lives on the machine that runs LINE. The seed recreates it.
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
+
+# Android build outputs. The project is committed; the APK is not.
+android/.gradle
+android/build
+android/app/build
+android/local.properties
+android/captures
+android/.idea
+*.apk
+*.aab
+*.keystore
+
+.capacitor
+/capacitor.config.json
