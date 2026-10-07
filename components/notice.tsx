@@ -1,9 +1,18 @@
+import { CircleAlert, CircleCheck } from "lucide-react";
+
 export function Notice({ notice, error }: { notice?: string; error?: string }) {
   if (!notice && !error) return null;
   const bad = Boolean(error);
+  const Icon = bad ? CircleAlert : CircleCheck;
   return (
-    <p className={`mb-5 border px-3 py-2 text-sm ${bad ? "banner-warn" : "border-pine bg-[#e7f8f3] text-ink"}`}>
-      {error || notice}
+    <p
+      role={bad ? "alert" : "status"}
+      className={`animate-pop mb-4 flex items-start gap-2.5 rounded-2xl px-3.5 py-3 text-sm font-medium ${
+        bad ? "banner-warn" : "border border-brand/30 bg-brand-soft text-ink"
+      }`}
+    >
+      <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${bad ? "" : "text-brand-strong"}`} aria-hidden />
+      <span>{error || notice}</span>
     </p>
   );
 }

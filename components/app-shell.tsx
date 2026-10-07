@@ -1,21 +1,16 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { Layers, LogOut, Shield } from "lucide-react";
 import { logoutAction } from "@/app/actions";
-import { SectionLink } from "@/components/section-link";
+import { Avatar } from "@/components/avatar";
+import { RightRail } from "@/components/right-rail";
+import { SideNav } from "@/components/side-nav";
 import { TabBar } from "@/components/tab-bar";
 import { getDb } from "@/lib/db";
 import { ROLE_LABELS, type Role } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
-import { listPermissions, unreadCount } from "@/lib/social";
-import { redirect } from "next/navigation";
-
-const NAV = [
-  ["/timeline", "Timeline"],
-  ["/create", "Create"],
-  ["/friends", "Friends"],
-  ["/profile", "Profile"],
-  ["/notifications", "Alerts"],
-] as const;
+import { listPermissions, shareCircle, unreadCount } from "@/lib/social";
 
 export async function AppShell({ children }: { children: ReactNode }) {
   const user = await getCurrentUser();
@@ -27,67 +22,101 @@ export async function AppShell({ children }: { children: ReactNode }) {
 
   if (user.suspended) {
     return (
-      <main className="mx-auto max-w-lg px-6 py-16">
-        <p className="font-display text-4xl font-bold text-pine">LINE</p>
-        <h1 className="mt-3 font-display text-4xl font-semibold">This account is suspended.</h1>
-        <p className="mt-3 text-muted">You can sign out. Sharing and timeline access stay closed.</p>
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
+        <p className="wordmark text-4xl text-brand">LINE</p>
+        <h1 className="page-title mt-4">This account is suspended.</h1>
+        <p className="mt-3 text-ink-2">You can sign out. Sharing and timeline access stay closed.</p>
         <form className="mt-6" action={logoutAction}>
-          <button type="submit" className="rounded-full bg-pine px-5 py-2 font-extrabold text-white">Log out</button>
+          <button type="submit" className="press h-11 rounded-full bg-brand px-6 font-semibold text-brand-on">
+            Log out
+          </button>
         </form>
       </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="safe-top sticky top-0 z-30 bg-pine text-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-2.5">
-          <Link href="/timeline" className="font-display text-[2rem] font-bold leading-none tracking-tight text-white">
+    <div className="min-h-dvh">
+      {/* Phone header: Vine green glass, white wordmark. */}
+      <header className="glass-header safe-top sticky top-0 z-30 md:hidden">
+        <div className="flex h-14 items-center justify-between pl-4 pr-2">
+          <Link href="/timeline" aria-label="LINE timeline" className="wordmark text-[30px] text-[rgb(var(--header-ink))]">
             LINE
           </Link>
-          <div className="flex items-center gap-3">
-            <Link className="hidden text-sm font-extrabold text-white/90 md:inline" href="/posts">
-              My Posts
+          <div className="flex items-center">
+            <Link
+              href="/posts"
+              aria-label="My Posts"
+              className="tap press flex items-center justify-center rounded-full text-[rgb(var(--header-ink))] hover:bg-white/15"
+            >
+              <Layers className="h-[22px] w-[22px]" aria-hidden />
             </Link>
             {staff ? (
-              <Link className="text-sm font-extrabold text-white/90" href="/staff">
-                Staff
+              <Link
+                href="/staff"
+                aria-label="Staff desk"
+                className="tap press flex items-center justify-center rounded-full text-[rgb(var(--header-ink))] hover:bg-white/15"
+              >
+                <Shield className="h-[22px] w-[22px]" aria-hidden />
               </Link>
             ) : null}
             <form action={logoutAction}>
-              <button type="submit" className="rounded-full px-3 py-1 text-sm font-extrabold text-white hover:bg-white/15">
-                Log out
+              <button
+                type="submit"
+                aria-label="Log out"
+                className="tap press flex items-center justify-center rounded-full text-[rgb(var(--header-ink))] hover:bg-white/15"
+              >
+                <LogOut className="h-[21px] w-[21px]" aria-hidden />
               </button>
             </form>
           </div>
         </div>
       </header>
-      <div className="mx-auto flex max-w-5xl">
-        <aside className="sticky top-[4.25rem] hidden h-[calc(100vh-4.25rem)] w-56 shrink-0 flex-col px-4 py-6 md:flex">
-          <nav className="grid gap-1">
-            {NAV.map(([href, label]) => (
-              <SectionLink key={href} href={href}>
-                {label}
-                {href === "/notifications" && unread ? ` (${unread})` : ""}
-              </SectionLink>
-            ))}
-            <SectionLink href="/posts">My Posts</SectionLink>
-            {staff ? <SectionLink href="/staff">Staff</SectionLink> : null}
-          </nav>
-          <div className="mt-auto text-sm">
-            <p className="font-extrabold">{user.displayName}</p>
-            <p className="font-semibold text-muted">@{user.username}</p>
-            <p className="text-xs font-bold uppercase tracking-wide text-muted">{role}</p>
+
+      <div className="mx-auto grid max-w-[1280px] md:grid-cols-[88px_minmax(0,600px)] md:justify-center md:gap-6 md:px-4 lg:grid-cols-[248px_minmax(0,600px)] lg:gap-8 xl:grid-cols-[248px_minmax(0,600px)_320px]">
+        <aside className="sticky top-0 hidden h-dvh flex-col py-6 md:flex">
+          <Link href="/timeline" aria-label="LINE timeline" className="mb-6 flex items-center gap-2.5 px-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-gradient-to-br from-brand to-brand-deep text-white shadow-glow">
+              <span className="wordmark text-[22px]">L</span>
+            </span>
+            <span className="wordmark hidden text-[34px] text-brand lg:inline">LINE</span>
+          </Link>
+          <SideNav unread={unread} staff={staff} />
+          <div className="mt-auto flex items-center gap-3 rounded-2xl p-2 lg:bg-surface lg:shadow-e1">
+            <Link href="/profile" className="flex min-w-0 flex-1 items-center gap-3 text-ink">
+              <Avatar initials={user.initials} color={user.avatarColor} name={user.displayName} size="md" />
+              <span className="hidden min-w-0 lg:block">
+                <span className="block truncate text-sm font-semibold">{user.displayName}</span>
+                <span className="block truncate text-xs text-ink-3">
+                  @{user.username}
+                  {user.role !== "user" ? ` · ${role}` : ""}
+                </span>
+              </span>
+            </Link>
+            <form action={logoutAction} className="hidden lg:block">
+              <button
+                type="submit"
+                aria-label="Log out"
+                className="tap press flex items-center justify-center rounded-full text-ink-3 hover:bg-surface-2 hover:text-ink"
+              >
+                <LogOut className="h-[18px] w-[18px]" aria-hidden />
+              </button>
+            </form>
           </div>
         </aside>
-        <div className="min-w-0 flex-1">
+
+        <main className="min-w-0 pb-[calc(var(--tabbar-h)+40px+env(safe-area-inset-bottom))] md:pb-16">
           {user.restricted ? (
-            <p className="banner-warn mx-4 mt-4 px-3 py-2 text-sm">
+            <p className="banner-warn mx-4 mt-4 px-3.5 py-3 text-sm font-medium md:mx-0">
               This account is restricted. You can read and adjust privacy. You cannot create or share.
             </p>
           ) : null}
-          <div className="mx-auto w-full max-w-[480px] pb-28 md:pb-12">{children}</div>
-        </div>
+          {children}
+        </main>
+
+        <aside className="sticky top-0 hidden h-dvh overflow-y-auto py-6 no-scrollbar xl:block" aria-label="Share with friends">
+          <RightRail circle={shareCircle(db, user.id)} />
+        </aside>
       </div>
       <TabBar unread={unread} />
     </div>

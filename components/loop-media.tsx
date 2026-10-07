@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { Image as ImageIcon, Play, Type, Volume2, VolumeX } from "lucide-react";
 import { isVideoKind, kindLabel } from "@/lib/format";
 
 const SCENE_COLORS: Record<string, [string, string]> = {
@@ -168,35 +169,71 @@ export function LoopMedia({
       className={`relative h-full w-full overflow-hidden bg-black ${tile ? "aspect-square" : tall ? "aspect-[4/5]" : "aspect-square"} ${playing ? "media-live" : ""}`}
     >
       {kind === "text" ? (
-        <div className="flex h-full items-end p-5" style={{ background: `linear-gradient(160deg, ${from}, ${to})` }}>
-          <p className={`font-display font-semibold leading-tight text-white ${tile ? "text-sm" : "text-3xl"}`}>{body}</p>
+        <div className="relative flex h-full flex-col justify-end overflow-hidden" style={{ background: `linear-gradient(155deg, ${from}, ${to})` }}>
+          <svg viewBox="0 0 400 400" className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden>
+            <circle cx="340" cy="60" r="120" fill="white" opacity="0.12" />
+            <circle cx="40" cy="380" r="90" fill="white" opacity="0.08" />
+          </svg>
+          {!tile ? (
+            <span aria-hidden className="absolute left-5 top-3 font-display text-[110px] font-extrabold leading-none text-white/25">
+              “
+            </span>
+          ) : null}
+          <p
+            className={`relative font-display font-bold leading-[1.08] tracking-tight text-white drop-shadow-[0_2px_10px_rgb(0_0_0/0.18)] ${
+              tile ? "line-clamp-4 p-2.5 text-[13px]" : "p-6 text-[28px] sm:text-[32px]"
+            }`}
+          >
+            {body}
+          </p>
         </div>
       ) : (
         <Scene scene={scene} from={from} to={to} gradId={gradId} />
       )}
       {kind !== "text" && !tile ? (
-        <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent px-4 pb-4 pt-16 text-white">
-          <p className="text-xs font-bold uppercase tracking-wide text-white/80">{kindLabel(kind)} · placeholder</p>
-          <p className="font-display text-2xl font-semibold leading-tight">{label}</p>
+        <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent px-4 pb-4 pt-20 text-white">
+          <p className="font-display text-[22px] font-bold leading-tight tracking-tight drop-shadow">{label}</p>
         </figcaption>
       ) : null}
-      {kind !== "text" && tile ? (
-        <figcaption className="pointer-events-none absolute bottom-1 left-1 rounded-full bg-black/45 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-white">
+      {!tile ? (
+        <span className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-black/35 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
+          {video ? (
+            playing ? (
+              <span className="flex h-3 items-end gap-[2px]" aria-hidden>
+                <span className="eq-bar h-3 w-[2px] rounded bg-white" />
+                <span className="eq-bar h-3 w-[2px] rounded bg-white [animation-delay:150ms]" />
+                <span className="eq-bar h-3 w-[2px] rounded bg-white [animation-delay:300ms]" />
+              </span>
+            ) : (
+              <Play className="h-3 w-3 fill-white" aria-hidden />
+            )
+          ) : kind === "text" ? (
+            <Type className="h-3 w-3" aria-hidden />
+          ) : (
+            <ImageIcon className="h-3 w-3" aria-hidden />
+          )}
           {kindLabel(kind)}
+          {video && !playing ? <span className="sr-only">, paused</span> : null}
+        </span>
+      ) : null}
+      {kind !== "text" && tile ? (
+        <figcaption className="pointer-events-none absolute right-1.5 top-1.5 rounded-full bg-black/40 p-1 text-white backdrop-blur-md">
+          {video ? <Play className="h-3 w-3 fill-white" aria-hidden /> : <ImageIcon className="h-3 w-3" aria-hidden />}
+          <span className="sr-only">{kindLabel(kind)}</span>
         </figcaption>
       ) : null}
       {video && interactive ? (
         <button
           type="button"
-          className="absolute right-3 top-3 rounded-full bg-black/45 px-3 py-1.5 text-xs font-extrabold text-white"
+          className="tap press absolute right-2 top-2 flex items-center justify-center rounded-full text-white"
           onClick={() => setSound((value) => !value)}
           aria-pressed={sound}
+          aria-label={sound ? "Mute" : "Turn sound on"}
         >
-          {sound && playing ? "Sound on" : "Tap for sound"}
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/35 backdrop-blur-md">
+            {sound && playing ? <Volume2 className="h-4 w-4" aria-hidden /> : <VolumeX className="h-4 w-4" aria-hidden />}
+          </span>
         </button>
-      ) : null}
-      {video && interactive && !playing ? (
-        <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-white/90 px-2 py-1 text-[11px] font-extrabold text-ink">Paused</span>
       ) : null}
     </figure>
   );
