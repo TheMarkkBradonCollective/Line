@@ -2,20 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Camera, House, Layers, Shield, UserRound, Users, type LucideIcon } from "lucide-react";
+import { Bell, Clapperboard, House, Layers, Plus, Search, Shield, UserRound, Users, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function activePath(pathname: string, href: string) {
-  if (href === "/profile") return pathname === "/profile" || pathname.startsWith("/u/");
+  if (href === "/profile") return pathname === "/profile";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function SideNav({ unread, staff }: { unread: number; staff: boolean }) {
+export function SideNav({ unread, staff, requests = 0 }: { unread: number; staff: boolean; requests?: number }) {
   const pathname = usePathname();
   const items: { href: string; label: string; Icon: LucideIcon; badge?: number }[] = [
-    { href: "/timeline", label: "Timeline", Icon: House },
-    { href: "/friends", label: "Friends", Icon: Users },
-    { href: "/notifications", label: "Alerts", Icon: Bell, badge: unread },
+    { href: "/timeline", label: "Home", Icon: House },
+    { href: "/reels", label: "Reels", Icon: Clapperboard },
+    { href: "/friends", label: "Friends", Icon: Users, badge: requests },
+    { href: "/notifications", label: "Notifications", Icon: Bell, badge: unread },
+    { href: "/search", label: "Find people", Icon: Search },
     { href: "/profile", label: "Profile", Icon: UserRound },
     { href: "/posts", label: "My Posts", Icon: Layers },
   ];
@@ -57,7 +59,7 @@ export function SideNav({ unread, staff }: { unread: number; staff: boolean }) {
         aria-current={activePath(pathname, "/create") ? "page" : undefined}
         className="press mt-4 flex min-h-[52px] items-center justify-center gap-2.5 rounded-2xl bg-brand text-[15px] font-semibold text-brand-on shadow-glow hover:bg-brand-deep hover:text-white"
       >
-        <Camera className="h-5 w-5" strokeWidth={2.2} aria-hidden />
+        <Plus className="h-5 w-5" strokeWidth={2.4} aria-hidden />
         <span className="hidden lg:inline">Create</span>
         <span className="sr-only lg:hidden">Create</span>
       </Link>

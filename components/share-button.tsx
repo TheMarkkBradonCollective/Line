@@ -7,7 +7,18 @@ import { SharePanel } from "@/components/share-panel";
 import { cn } from "@/lib/utils";
 
 /** The hero action. Opens the share sheet; falls back to /share/[id] without JavaScript. */
-export function ShareButton({ postId, count, className }: { postId: number; count: number; className?: string }) {
+export function ShareButton({
+  postId,
+  count,
+  className,
+  variant = "pill",
+}: {
+  postId: number;
+  count: number;
+  className?: string;
+  /** "bar" is the plain action-bar look used under feed posts. */
+  variant?: "pill" | "bar" | "icon";
+}) {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const trigger = useRef<HTMLAnchorElement>(null);
@@ -63,13 +74,28 @@ export function ShareButton({ postId, count, className }: { postId: number; coun
           setOpen(true);
         }}
         className={cn(
-          "press inline-flex h-11 items-center gap-2 rounded-full bg-brand pl-3.5 pr-4 text-[15px] font-semibold text-brand-on shadow-glow hover:bg-brand-deep hover:text-white",
+          variant === "pill" &&
+            "press inline-flex h-11 items-center gap-2 rounded-full bg-brand pl-3.5 pr-4 text-[15px] font-semibold text-brand-on shadow-glow hover:bg-brand-deep hover:text-white",
+          variant === "bar" &&
+            "press inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl text-[14.5px] font-semibold text-brand-strong hover:bg-brand-soft",
+          variant === "icon" && "press flex flex-col items-center gap-1 text-[12px] font-semibold text-white",
           className,
         )}
       >
-        <Send className="h-[18px] w-[18px]" strokeWidth={2.3} aria-hidden />
-        Share
-        <span className="rounded-full bg-black/10 px-1.5 text-[13px] tabular-nums">{count}</span>
+        {variant === "icon" ? (
+          <>
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-glow">
+              <Send className="h-[22px] w-[22px]" strokeWidth={2.3} aria-hidden />
+            </span>
+            Share
+          </>
+        ) : (
+          <>
+            <Send className="h-[18px] w-[18px]" strokeWidth={2.3} aria-hidden />
+            Share
+            {variant === "pill" ? <span className="rounded-full bg-black/10 px-1.5 text-[13px] tabular-nums">{count}</span> : null}
+          </>
+        )}
       </a>
       {open
         ? createPortal(

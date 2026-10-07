@@ -444,7 +444,7 @@ export function publishPost(
 ) {
   const { recipients, errors } = expandRecipients(db, authorId, input.choice);
   if (recipients.length === 0) {
-    throw new Error("Choose your timeline, people, a group, or a list. A post only moves when you send it to someone.");
+    throw new Error("Pick “Just me”, people, a group, or a list. A post only reaches someone when you share it with them.");
   }
   const postId = createPost(db, authorId, input);
   const shared = recipients.length

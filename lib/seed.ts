@@ -134,7 +134,7 @@ export function seed(db: Database.Database) {
   insertUser(db, {
     username: "marcus",
     displayName: "Marcus Hale",
-    bio: "I send notes to specific people. If you are reading this on my profile, I did not put it on your timeline.",
+    bio: "Bikes, bread, and the river path. If you can see one of my posts, I shared it with you.",
     color: "#00bf8f",
     initials: "MH",
   });
@@ -148,7 +148,7 @@ export function seed(db: Database.Database) {
   insertUser(db, {
     username: "alex",
     displayName: "Alex Ruiz",
-    bio: "Friend requests only from friends of friends. My timeline is whatever people hand me.",
+    bio: "Friend requests only from friends of friends. My feed is whatever people hand me.",
     color: "#24527a",
     initials: "AR",
     whoCanAdd: "friends_of_friends",
@@ -164,7 +164,7 @@ export function seed(db: Database.Database) {
   insertUser(db, {
     username: "riley",
     displayName: "Riley Chen",
-    bio: "Market notes go to the people I pick. I do not accept shares onto my timeline.",
+    bio: "Market notes go to the people I pick. I’m not accepting shares right now.",
     color: "#6b3a55",
     initials: "RC",
     whoCanShare: "nobody",
@@ -172,7 +172,7 @@ export function seed(db: Database.Database) {
   insertUser(db, {
     username: "noah",
     displayName: "Noah Park",
-    bio: "Short loops from the hall and the bowl. If it is on your timeline, I sent it.",
+    bio: "Short loops from the hall and the bowl. If it’s in your feed, I sent it.",
     color: "#24527a",
     initials: "NP",
   });
@@ -411,7 +411,7 @@ export function seed(db: Database.Database) {
 
   const gate = createPost(db, marcus.id, {
     kind: "text",
-    body: "The side gate lock sticks. I put this on my own timeline and did not send it to anyone.",
+    body: "The side gate lock sticks. I kept this to myself and did not share it with anyone.",
     allowReshare: false,
     seedKey: "gate",
     createdAt: at(50),

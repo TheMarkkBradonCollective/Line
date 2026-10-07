@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { ArrowRight, Lock, Send } from "lucide-react";
+import { ArrowRight, Lock, Send, UserPlus } from "lucide-react";
 import { Avatar } from "@/components/avatar";
+import type { PersonCard } from "@/lib/social";
 import type { User } from "@/lib/types";
 
 type Circle = { user: User; sentTo: number; got: number; open: boolean }[];
@@ -8,9 +9,20 @@ type Circle = { user: User; sentTo: number; got: number; open: boolean }[];
 const STEPS = ["Create", "Share", "Receive", "Reshare", "Continue"];
 
 /** Desktop right column. Your own friends, so you can pass something on. Never a recommendation feed. */
-export function RightRail({ circle }: { circle: Circle }) {
+export function RightRail({ circle, suggestions = [], requests = 0 }: { circle: Circle; suggestions?: PersonCard[]; requests?: number }) {
   return (
     <div className="grid gap-4">
+      {requests ? (
+        <Link href="/friends?tab=requests" className="surface-card flex items-center gap-3 p-4 text-ink hover:bg-surface-2">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-soft text-brand-strong">
+            <UserPlus className="h-5 w-5" aria-hidden />
+          </span>
+          <span className="flex-1 text-[15px] font-semibold">
+            {requests} friend {requests === 1 ? "request" : "requests"}
+          </span>
+          <ArrowRight className="h-4 w-4 text-ink-3" aria-hidden />
+        </Link>
+      ) : null}
       <section className="surface-card p-4" aria-labelledby="rail-friends">
         <div className="flex items-center justify-between">
           <h2 id="rail-friends" className="font-display text-lg font-bold tracking-tight">
@@ -55,12 +67,36 @@ export function RightRail({ circle }: { circle: Circle }) {
         </ul>
       </section>
 
+      {suggestions.length ? (
+        <section className="surface-card p-4" aria-labelledby="rail-people">
+          <h2 id="rail-people" className="font-display text-lg font-bold tracking-tight">
+            People you may know
+          </h2>
+          <p className="mt-0.5 text-[13px] text-ink-3">Friends of your friends. People only, never posts.</p>
+          <ul className="mt-3 grid gap-0.5">
+            {suggestions.map(({ user, mutual }) => (
+              <li key={user.id}>
+                <Link href={`/u/${user.username}`} className="flex min-h-[52px] items-center gap-3 rounded-2xl px-2 py-1.5 text-ink hover:bg-surface-2">
+                  <Avatar initials={user.initials} color={user.avatarColor} name={user.displayName} size="md" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-semibold">{user.displayName}</span>
+                    <span className="block truncate text-[12.5px] text-ink-3">
+                      {mutual.length} mutual {mutual.length === 1 ? "friend" : "friends"}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section className="surface-card overflow-hidden" aria-labelledby="rail-how">
         <div className="bg-gradient-to-br from-brand to-brand-deep px-4 py-4 text-white">
           <h2 id="rail-how" className="font-display text-lg font-bold tracking-tight">
             Sent, not served.
           </h2>
-          <p className="mt-0.5 text-[13px] text-white/90">Nothing lands here unless a person picked you.</p>
+          <p className="mt-0.5 text-[13px] text-white/90">You only see what someone shared with you.</p>
         </div>
         <ol className="flex flex-wrap items-center gap-1.5 px-4 py-3.5 text-[12.5px] font-semibold text-ink-2">
           {STEPS.map((step, index) => (
@@ -71,7 +107,7 @@ export function RightRail({ circle }: { circle: Circle }) {
           ))}
         </ol>
       </section>
-      <p className="px-2 text-xs text-ink-3">No Discover. No algorithm. Just people passing things to people.</p>
+      <p className="px-2 text-xs text-ink-3">No Discover. No algorithm. No share, no see.</p>
     </div>
   );
 }

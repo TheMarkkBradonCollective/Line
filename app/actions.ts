@@ -8,6 +8,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import {
   acceptFriend,
+  addComment,
   blockUser,
   createGroup,
   createList,
@@ -26,13 +27,15 @@ import {
   publishPost,
   removeFriend,
   requestFriend,
+  REACTION_KINDS,
   setAllowReshare,
+  setReaction,
   sharePost,
   shareTargets,
-  toggleLike,
   unblockUser,
   updatePrivacy,
   updateProfile,
+  type ReactionKind,
   type RecipientChoice,
 } from "@/lib/social";
 import {
@@ -140,12 +143,17 @@ export async function logoutAction() {
 export async function createPostAction(formData: FormData) {
   await run("/create", async (user) => {
     const kind = String(formData.get("kind") || "text");
-    const plate = MEDIA_PLATES.find((item) => item.id === String(formData.get("plate") || ""));
+    const picked = formData
+      .getAll("plate")
+      .map((value) => MEDIA_PLATES.find((item) => item.id === String(value)))
+      .filter((item): item is (typeof MEDIA_PLATES)[number] => Boolean(item));
+    const plate = picked[0];
     const result = publishPost(getDb(), user.id, {
       kind,
       body: String(formData.get("body") || ""),
       mediaLabel: plate?.label ?? null,
       mediaTone: plate?.tone ?? null,
+      photos: kind === "photo" && picked.length > 1 ? picked.map((item) => ({ label: item.label, tone: item.tone })) : null,
       allowReshare: formData.get("allow_reshare") === "on",
       choice: choiceOf(formData),
       note: String(formData.get("note") || ""),
@@ -358,6 +366,9 @@ export async function updateProfileAction(formData: FormData) {
       displayName: String(formData.get("displayName") || ""),
       bio: String(formData.get("bio") || ""),
       avatarColor: String(formData.get("avatarColor") || user.avatarColor),
+      location: String(formData.get("location") ?? ""),
+      work: String(formData.get("work") ?? ""),
+      education: String(formData.get("education") ?? ""),
     });
     revalidatePath("/profile");
     redirect(withQuery("/profile", "notice", "Profile updated. Photo upload is a color avatar in this build."));
@@ -380,15 +391,23 @@ export async function updatePrivacyAction(formData: FormData) {
   });
 }
 
-export async function toggleLikeAction(postId: number) {
+/** Set or clear your reaction. The access check lives in setReaction, not here. */
+export async function reactAction(postId: number, kind: ReactionKind | null) {
   const user = await getCurrentUser();
   if (!user || user.suspended) throw new Error("Sign in to react.");
-  const db = getDb();
-  const post = getPost(db, postId);
-  if (!post || !canViewPost(db, user, post) || post.hidden) throw new Error("That post is not on your timeline.");
-  const next = toggleLike(db, user.id, postId);
-  revalidatePath("/timeline");
-  return { liked: next.liked, likeCount: next.likeCount };
+  if (kind !== null && !REACTION_KINDS.includes(kind)) throw new Error("Pick a reaction.");
+  const next = setReaction(getDb(), user.id, Number(postId), kind);
+  return next.reactions;
+}
+
+export async function addCommentAction(formData: FormData) {
+  const postId = Number(formData.get("postId"));
+  const parentId = Number(formData.get("parentId")) || null;
+  await run(`/post/${postId}`, async (user) => {
+    const id = addComment(getDb(), user.id, postId, { body: String(formData.get("body") || ""), parentId });
+    revalidatePath(`/post/${postId}`);
+    redirect(`/post/${postId}#c-${id}`);
+  });
 }
 
 export async function setReshareAction(formData: FormData) {

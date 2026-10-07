@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Ban, Inbox, Layers, Lock, ShieldCheck, UserPlus, Users, X } from "lucide-react";
+import { Ban, Eye, Inbox, Layers, Lock, Search, ShieldCheck, UserPlus, Users, X } from "lucide-react";
 import {
   acceptFriendAction,
   blockAction,
@@ -21,7 +21,17 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
-import { listAllowIds, listBlocks, listCustomLists, listFriends, listGroups, pendingIncoming, pendingOutgoing } from "@/lib/social";
+import {
+  friendSuggestions,
+  listAllowIds,
+  listBlocks,
+  listCustomLists,
+  listFriends,
+  listGroups,
+  mutualFriends,
+  pendingIncoming,
+  pendingOutgoing,
+} from "@/lib/social";
 import type { User } from "@/lib/types";
 
 type Tab = "friends" | "requests" | "groups" | "privacy";
@@ -47,14 +57,14 @@ function Tabs({ tab, requests }: { tab: Tab; requests: number }) {
   );
 }
 
-function PersonRow({ person, children }: { person: User; children?: React.ReactNode }) {
+function PersonRow({ person, children, sub }: { person: User; children?: React.ReactNode; sub?: React.ReactNode }) {
   return (
     <div className="flex min-h-[64px] items-center gap-3 px-4 py-2.5">
       <Link href={`/u/${person.username}`} className="flex min-w-0 flex-1 items-center gap-3 text-ink">
         <Avatar initials={person.initials} color={person.avatarColor} name={person.displayName} size="md" />
         <span className="min-w-0">
           <span className="block truncate text-[15px] font-semibold">{person.displayName}</span>
-          <span className="block truncate text-[13px] text-ink-3">@{person.username}</span>
+          <span className="block truncate text-[13px] text-ink-3">{sub ?? `@${person.username}`}</span>
         </span>
       </Link>
       {children ? <div className="flex shrink-0 items-center gap-1.5">{children}</div> : null}
@@ -115,12 +125,17 @@ export default async function FriendsPage({
   const outgoing = pendingOutgoing(db, user.id);
   const blocks = listBlocks(db, user.id);
   const allowIds = listAllowIds(db, user.id);
+  const suggestions = tab === "friends" ? friendSuggestions(db, user.id, 6) : [];
+  const mutualLine = (person: User) => {
+    const count = mutualFriends(db, user.id, person.id).length;
+    return count ? `${count} mutual ${count === 1 ? "friend" : "friends"}` : `@${person.username}`;
+  };
 
   return (
     <div>
       <PageHeader
         title="Friends"
-        subtitle="Being friends never puts their posts on your timeline. It only means they’re allowed to send you something."
+        subtitle="Being friends never puts their posts in your feed. It only means they’re allowed to share with you."
       />
       <Tabs tab={tab} requests={incoming.length} />
       <div className="mt-4 px-4 md:px-0">
@@ -129,15 +144,63 @@ export default async function FriendsPage({
 
       {tab === "friends" ? (
         <>
-          <form action={requestFriendAction} className="mx-4 flex gap-2 md:mx-0">
-            <input type="hidden" name="returnTo" value="/friends" />
-            <label className="relative flex-1">
-              <span className="sr-only">Username to add</span>
-              <UserPlus className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" aria-hidden />
-              <input className="field rounded-full pl-10" name="username" placeholder="Add by username" autoComplete="off" />
+          <form action="/search" method="get" className="mx-4 md:mx-0" role="search">
+            <label className="relative block">
+              <span className="sr-only">Search people by name</span>
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" aria-hidden />
+              <input className="field rounded-full pl-10" name="q" placeholder="Search people by name" autoComplete="off" />
             </label>
-            <Button type="submit">Add</Button>
           </form>
+
+          {incoming.length ? (
+            <Section title={`Friend requests · ${incoming.length}`}>
+              <div className="surface-card divide-y divide-line/70 overflow-hidden">
+                {incoming.map((request) => (
+                  <PersonRow key={request.requestId} person={request.user} sub={mutualLine(request.user)}>
+                    <form action={acceptFriendAction}>
+                      <input type="hidden" name="requestId" value={request.requestId} />
+                      <Button type="submit" size="sm">
+                        Confirm
+                      </Button>
+                    </form>
+                    <form action={declineFriendAction}>
+                      <input type="hidden" name="requestId" value={request.requestId} />
+                      <button type="submit" className="press h-9 rounded-full bg-surface-2 px-3.5 text-[13px] font-semibold text-ink-2">
+                        Delete
+                      </button>
+                    </form>
+                  </PersonRow>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+
+          {suggestions.length ? (
+            <Section title="People you may know" hint="Friends of your friends. Suggestions are people only, never posts.">
+              <ul className="no-scrollbar -mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0" data-testid="suggestions">
+                {suggestions.map(({ user: person, mutual }) => (
+                  <li key={person.id} className="surface-card flex w-[156px] shrink-0 flex-col items-center p-3.5 text-center">
+                    <Link href={`/u/${person.username}`} className="flex flex-col items-center text-ink">
+                      <Avatar initials={person.initials} color={person.avatarColor} name={person.displayName} size="lg" />
+                      <span className="mt-2 line-clamp-1 text-[14.5px] font-semibold">{person.displayName}</span>
+                    </Link>
+                    <span className="mt-1 flex items-center gap-1.5 text-[12px] text-ink-3">
+                      <AvatarStack people={mutual.slice(0, 2)} size="xs" max={2} />
+                      {mutual.length} mutual
+                    </span>
+                    <form action={requestFriendAction} className="mt-3 w-full">
+                      <input type="hidden" name="username" value={person.username} />
+                      <input type="hidden" name="returnTo" value="/friends" />
+                      <button type="submit" className="press inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-brand-soft text-[13.5px] font-semibold text-brand-strong hover:bg-brand-tint">
+                        <UserPlus className="h-4 w-4" aria-hidden /> Add friend
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          ) : null}
+
           <Section title={`Your friends · ${friends.length}`}>
             {friends.length === 0 ? (
               <EmptyState icon={Users} title="No friends yet">
@@ -146,7 +209,7 @@ export default async function FriendsPage({
             ) : (
               <div className="surface-card divide-y divide-line/70 overflow-hidden">
                 {friends.map((friend) => (
-                  <PersonRow key={friend.id} person={friend}>
+                  <PersonRow key={friend.id} person={friend} sub={mutualLine(friend)}>
                     {friend.whoCanShare === "nobody" ? (
                       <span className="hidden items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 text-[11.5px] font-semibold text-ink-3 sm:inline-flex">
                         <Lock className="h-3 w-3" aria-hidden /> No shares
@@ -300,12 +363,19 @@ export default async function FriendsPage({
         <>
           <form action={updatePrivacyAction} className="grid">
             <input type="hidden" name="tab" value="privacy" />
-            <Section title="Who can share with you" hint="This is the gate. Anyone outside it can’t put a post on your timeline, even if they find your profile.">
+            <div className="mx-4 mt-2 flex items-start gap-2.5 rounded-2xl bg-brand-soft px-3.5 py-3 text-[13.5px] text-ink md:mx-0">
+              <Eye className="mt-0.5 h-4 w-4 shrink-0 text-brand-strong" aria-hidden />
+              <span>
+                Your profile (name, photo, bio, About, friends) is visible to everyone signed in. Your posts never are: each one is seen only by
+                the people it was shared with. Block someone to close your profile to them.
+              </span>
+            </div>
+            <Section title="Who can share with you" hint="This is the gate. Anyone outside it can’t share a post with you, even if they find your profile.">
               <div className="grid grid-cols-1 gap-2">
                 <Choice name="whoCanShare" value="friends" label="Friends" checked={user.whoCanShare === "friends"} />
                 <Choice name="whoCanShare" value="groups" label="Only certain groups" hint="Pick them below" checked={user.whoCanShare === "groups"} />
                 <Choice name="whoCanShare" value="allow_list" label="Only people I choose" hint="Check them below" checked={user.whoCanShare === "allow_list"} />
-                <Choice name="whoCanShare" value="nobody" label="Nobody" hint="Your timeline stays quiet" checked={user.whoCanShare === "nobody"} />
+                <Choice name="whoCanShare" value="nobody" label="Nobody — I’m not accepting shares" hint="Your feed only shows what you make" checked={user.whoCanShare === "nobody"} />
               </div>
             </Section>
             <Section title="Groups that may share with you">
