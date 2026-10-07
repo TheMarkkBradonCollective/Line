@@ -20,7 +20,9 @@ export type TimelineItem = {
   headline: string;
   provenance: string;
   allowReshare: number;
-  listedOnDiscover: number;
+  likeCount: number;
+  shareCount: number;
+  liked: boolean;
 };
 
 export type ShareRejection = { userId: number; name: string; reason: string };
@@ -172,9 +174,8 @@ export function canShareWith(db: Database.Database, fromId: number, toId: number
       return { ok: false as const, reason: "Only friends of the creator can reshare this." };
     }
     if (author.whoCanReshare === "recipients") {
-      const received = hasShareTo(db, post.id, fromId) || post.listedOnDiscover === 1;
-      if (!received) {
-        return { ok: false as const, reason: "You can reshare this only after it was shared with you, or from Discover." };
+      if (!hasShareTo(db, post.id, fromId)) {
+        return { ok: false as const, reason: "You can pass this on only after it was shared with you." };
       }
     }
   }
@@ -357,7 +358,6 @@ export function createPost(
     body: string;
     mediaLabel?: string | null;
     mediaTone?: string | null;
-    listedOnDiscover: boolean;
     allowReshare: boolean;
     seedKey?: string | null;
     createdAt?: string;
@@ -377,16 +377,15 @@ export function createPost(
   const info = db
     .prepare(
       `INSERT INTO posts
-        (author_id, kind, body, media_label, media_tone, listed_on_discover, allow_reshare, hidden, seed_key, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+        (author_id, kind, body, media_label, media_tone, allow_reshare, hidden, seed_key, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     )
     .run(
       authorId,
       input.kind,
       body,
       input.kind === "text" ? null : input.mediaLabel ?? null,
-      input.kind === "text" ? null : input.mediaTone ?? "#c4b49a",
-      input.listedOnDiscover ? 1 : 0,
+      input.kind === "text" ? null : input.mediaTone ?? "#00bf8f,#009e78",
       input.allowReshare ? 1 : 0,
       input.seedKey ?? null,
       input.createdAt ?? new Date().toISOString(),
@@ -402,15 +401,14 @@ export function publishPost(
     body: string;
     mediaLabel?: string | null;
     mediaTone?: string | null;
-    listedOnDiscover: boolean;
     allowReshare: boolean;
     choice: RecipientChoice;
     note?: string | null;
   },
 ) {
   const { recipients, errors } = expandRecipients(db, authorId, input.choice);
-  if (recipients.length === 0 && !input.listedOnDiscover) {
-    throw new Error("Choose your timeline, people, a group, a list, or Discover. A post does not go anywhere on its own.");
+  if (recipients.length === 0) {
+    throw new Error("Choose your timeline, people, a group, or a list. A post only moves when you send it to someone.");
   }
   const postId = createPost(db, authorId, input);
   const shared = recipients.length
@@ -450,7 +448,7 @@ function provenance(db: Database.Database, shareId: number, parentId: number | n
 
 /**
  * Personal timeline. A row exists only because someone addressed a share to this user
- * (including a share they addressed to themselves). Discover is a different query.
+ * (including a share they addressed to themselves).
  */
 export function getTimeline(db: Database.Database, userId: number): TimelineItem[] {
   const rows = db
@@ -471,7 +469,6 @@ export function getTimeline(db: Database.Database, userId: number): TimelineItem
          p.media_tone,
          p.author_id,
          p.allow_reshare,
-         p.listed_on_discover,
          g.name AS group_name
        FROM shares s
        JOIN posts p ON p.id = s.post_id
@@ -496,7 +493,6 @@ export function getTimeline(db: Database.Database, userId: number): TimelineItem
     media_tone: string | null;
     author_id: number;
     allow_reshare: number;
-    listed_on_discover: number;
     group_name: string | null;
   }[];
 
@@ -527,26 +523,8 @@ export function getTimeline(db: Database.Database, userId: number): TimelineItem
       headline,
       provenance: provenance(db, row.share_id, row.parent_share_id, author, sharedBy, userId),
       allowReshare: row.allow_reshare,
-      listedOnDiscover: row.listed_on_discover,
+      ...engagement(db, row.post_id, userId),
     };
-  });
-}
-
-export function getDiscover(db: Database.Database) {
-  if (getSetting(db, "discover_enabled") !== "1") return [];
-  const rows = db
-    .prepare(
-      `SELECT * FROM posts
-       WHERE listed_on_discover = 1 AND hidden = 0
-       ORDER BY created_at DESC, id DESC`,
-    )
-    .all() as PostRow[];
-  return rows.map((row) => {
-    const post = mapPost(row);
-    const shareCount = (
-      db.prepare("SELECT COUNT(*) AS c FROM shares WHERE post_id = ?").get(post.id) as { c: number }
-    ).c;
-    return { post, author: mustUser(db, post.authorId), shareCount };
   });
 }
 
@@ -563,18 +541,6 @@ export function coreRuleViolations(db: Database.Database) {
         .get(item.shareId) as { to_user_id: number } | undefined;
       if (!share || share.to_user_id !== user.id) {
         violations.push(`post ${item.postId} is on ${user.username}'s timeline without a share to them`);
-      }
-    }
-    const timelineIds = new Set(timeline.map((item) => item.postId));
-    const discover = db
-      .prepare("SELECT id, seed_key FROM posts WHERE listed_on_discover = 1")
-      .all() as { id: number; seed_key: string | null }[];
-    for (const post of discover) {
-      const shared = db
-        .prepare("SELECT 1 AS ok FROM shares WHERE post_id = ? AND to_user_id = ?")
-        .get(post.id, user.id) as { ok: number } | undefined;
-      if (!shared && timelineIds.has(post.id)) {
-        violations.push(`Discover item ${post.seed_key ?? post.id} leaked onto ${user.username}'s timeline`);
       }
     }
   }
@@ -835,10 +801,69 @@ export function updatePrivacy(
   }
 }
 
-export function setDiscoverListing(db: Database.Database, userId: number, postId: number, listed: boolean) {
-  const post = getPost(db, postId);
-  if (!post || post.authorId !== userId) throw new Error("Only the creator can change the public shelf.");
-  db.prepare("UPDATE posts SET listed_on_discover = ? WHERE id = ?").run(listed ? 1 : 0, postId);
+function engagement(db: Database.Database, postId: number, viewerId: number) {
+  const likeCount = (
+    db.prepare("SELECT COUNT(*) AS c FROM reactions WHERE post_id = ? AND kind = 'like'").get(postId) as { c: number }
+  ).c;
+  const shareCount = (db.prepare("SELECT COUNT(*) AS c FROM shares WHERE post_id = ?").get(postId) as { c: number }).c;
+  const liked = Boolean(
+    db.prepare("SELECT 1 AS ok FROM reactions WHERE post_id = ? AND user_id = ? AND kind = 'like'").get(postId, viewerId),
+  );
+  return { likeCount, shareCount, liked };
+}
+
+export function toggleLike(db: Database.Database, userId: number, postId: number) {
+  const existing = db
+    .prepare("SELECT 1 AS ok FROM reactions WHERE user_id = ? AND post_id = ? AND kind = 'like'")
+    .get(userId, postId);
+  if (existing) {
+    db.prepare("DELETE FROM reactions WHERE user_id = ? AND post_id = ? AND kind = 'like'").run(userId, postId);
+  } else {
+    db.prepare("INSERT INTO reactions (user_id, post_id, kind, created_at) VALUES (?, ?, 'like', ?)").run(
+      userId,
+      postId,
+      new Date().toISOString(),
+    );
+  }
+  return engagement(db, postId, userId);
+}
+
+export function postsVisibleTo(db: Database.Database, viewerId: number, personId: number) {
+  const rows =
+    viewerId === personId
+      ? (db
+          .prepare("SELECT * FROM posts WHERE author_id = ? AND hidden = 0 ORDER BY created_at DESC, id DESC")
+          .all(personId) as PostRow[])
+      : (db
+          .prepare(
+            `SELECT p.* FROM posts p
+             WHERE p.author_id = ? AND p.hidden = 0
+               AND EXISTS (SELECT 1 FROM shares s WHERE s.post_id = p.id AND s.to_user_id = ?)
+             ORDER BY p.created_at DESC, p.id DESC`,
+          )
+          .all(personId, viewerId) as PostRow[]);
+  return rows.map((row) => ({ post: mapPost(row), ...engagement(db, row.id, viewerId) }));
+}
+
+export function profileStats(db: Database.Database, viewerId: number, personId: number) {
+  const friends = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM friendships
+         WHERE status = 'accepted' AND (requester_id = ? OR addressee_id = ?)`,
+      )
+      .get(personId, personId) as { c: number }
+  ).c;
+  const posts = postsVisibleTo(db, viewerId, personId).length;
+  const shares =
+    viewerId === personId
+      ? (db.prepare("SELECT COUNT(*) AS c FROM shares WHERE from_user_id = ?").get(personId) as { c: number }).c
+      : (
+          db
+            .prepare("SELECT COUNT(*) AS c FROM shares WHERE from_user_id = ? AND to_user_id = ?")
+            .get(personId, viewerId) as { c: number }
+        ).c;
+  return { friends, posts, shares };
 }
 
 export function setAllowReshare(db: Database.Database, userId: number, postId: number, allow: boolean) {
@@ -922,7 +947,6 @@ export function canViewPost(db: Database.Database, viewer: User, post: Post) {
     return hasPermission(db, viewer.id, "view_reported_content") || hasPermission(db, viewer.id, "moderate_content");
   }
   if (hasShareTo(db, post.id, viewer.id)) return true;
-  if (post.listedOnDiscover === 1 && !isBlocked(db, viewer.id, post.authorId)) return true;
   if (hasPermission(db, viewer.id, "view_reported_content") || hasPermission(db, viewer.id, "moderate_content")) {
     return true;
   }
@@ -973,16 +997,6 @@ export function sentActivity(db: Database.Database, userId: number) {
   }[];
 }
 
-export function publicPostsBy(db: Database.Database, authorId: number) {
-  const rows = db
-    .prepare(
-      `SELECT * FROM posts WHERE author_id = ? AND listed_on_discover = 1 AND hidden = 0
-       ORDER BY created_at DESC`,
-    )
-    .all(authorId) as PostRow[];
-  return rows.map(mapPost);
-}
-
 export function createTicket(db: Database.Database, userId: number, subject: string, body: string) {
   const title = subject.trim();
   const text = body.trim();
@@ -997,10 +1011,14 @@ export function createTicket(db: Database.Database, userId: number, subject: str
 }
 
 export const MEDIA_PLATES = [
-  { id: "market", label: "North hall, morning light", tone: "#c4a574" },
-  { id: "river", label: "River path after rain", tone: "#6e9084" },
-  { id: "kitchen", label: "Kitchen table, late", tone: "#d08b6a" },
-  { id: "street", label: "Side street at dusk", tone: "#6e7f99" },
+  { id: "market", label: "North hall, morning light", tone: "#ffb703,#fb8500" },
+  { id: "river", label: "River path after rain", tone: "#48cae4,#0077b6" },
+  { id: "kitchen", label: "Kitchen table, late", tone: "#ff8fab,#fb6f92" },
+  { id: "street", label: "Side street at dusk", tone: "#7b2cbf,#c77dff" },
+  { id: "creek", label: "Creek under the bridge", tone: "#2ec4b6,#1a936f" },
+  { id: "buns", label: "Tray of cardamom buns", tone: "#f4a261,#e76f51" },
+  { id: "skate", label: "Painted skate bowl", tone: "#ff5d8f,#ff9e00" },
+  { id: "loaf", label: "Cracked loaf, warm", tone: "#e09f3e,#9c6644" },
 ] as const;
 
-export const AVATAR_COLORS = ["#00bf8f", "#24527a", "#8a5a2b", "#3f4a3a", "#6b3a55", "#4d463c", "#5c6b73", "#2f2f2f"];
+export const AVATAR_COLORS = ["#00bf8f", "#24527a", "#e05a33", "#8a5a2b", "#6b3a55", "#7b2cbf", "#c44b7a", "#2f2f2f"];

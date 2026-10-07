@@ -161,7 +161,7 @@ export default async function FriendsPage({
           <fieldset className="grid gap-2 text-sm">
             <legend className="font-medium">Who can reshare what you made</legend>
             {[
-              ["recipients", "People it was shared with, and anyone if it is on Discover"],
+              ["recipients", "Only people it was shared with"],
               ["friends", "Only your friends"],
               ["nobody", "Nobody"],
             ].map(([value, label]) => (

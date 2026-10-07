@@ -1,6 +1,6 @@
 # LINE
 
-LINE is a share-first social app. A post reaches a personal timeline only when a person shares it with that person, or when the author publishes it to their own timeline. Discover is a public shelf. It never fills a timeline on its own.
+LINE is a share-first social app. A post reaches a personal timeline only when a person shares it with that person, or when the author publishes it to their own timeline. There is no public shelf and no recommended feed.
 
 Flow: **Create → Share → Receive → Reshare → Continue.**
 
@@ -41,8 +41,8 @@ npm run test:core-rule
 The script builds a throwaway SQLite database and asserts:
 
 - Marcus’s river note, shared only with Jordan, is on Jordan’s timeline and not on Alex’s, Sam’s, or Marcus’s.
-- Riley’s public market post and hall reel are on Discover and on nobody’s timeline.
-- After Marcus shares the market post with Alex, it appears on Alex’s timeline only. Sam, Jordan, and Riley still do not have it.
+- Riley’s market photo is shared with Marcus only. The hall reel is shared with Noah only.
+- After Marcus passes the market photo to Alex, it appears on Alex’s timeline. Sam, Jordan, and Riley still do not have it.
 - Every timeline row is a share addressed to that person.
 - Staff grants are explicit. Removing Moderator’s `review_reports` grant closes that queue even though the role title stays. Administrator does not have platform ownership. Founder does.
 - Audit rows cannot be updated or deleted.
@@ -53,11 +53,15 @@ People:
 
 | Username | You’ll see |
 | --- | --- |
-| `jordan` | The river note Marcus sent only to Jordan, and Sam’s loaf note after Marcus passed it on. Not the peaches. |
-| `alex` | The peaches Jordan sent to the Saturday kitchen group. Not the river note. Not the Discover posts. |
-| `sam` | The peaches. Not the river note. Not the loaf note (Sam sent that to Marcus). |
-| `marcus` | Sam’s loaf note, plus a gate note Marcus published to himself. The river note is in My Posts, not on Marcus’s timeline. |
-| `riley` | An empty timeline. Two public pieces on Discover. Riley does not accept shares. |
+| `jordan` | The river note Marcus sent only to Jordan, Sam’s loaf note after Marcus passed it on, plus a creek video from Theo and a skate loop from Noah. Not the peaches. |
+| `alex` | The peaches Jordan sent to the Saturday kitchen group, Priya’s buns, and Mina’s dusk loop. Not the river note. Not Riley’s market photo until someone shares it. |
+| `sam` | The peaches and Priya’s buns. Not the river note. Not the loaf note (Sam sent that to Marcus). |
+| `marcus` | Sam’s loaf note, Riley’s market photo, and a gate note Marcus published to himself. The river note is in My Posts, not on Marcus’s timeline. |
+| `riley` | An empty timeline. Riley sent the market photo to Marcus and the hall reel to Noah, and does not accept shares. |
+| `noah` | Riley’s hall reel. |
+| `mina` | An empty timeline until someone shares with her. Her dusk loop is on Alex’s timeline. |
+| `theo` | An empty timeline until someone shares with him. His creek video is on Jordan’s timeline. |
+| `priya` | An empty timeline until someone shares with her. Her bun photo is on Sam’s and Alex’s timelines. |
 
 Staff, one account per role. The desk opens from permission grants, not from the title.
 
@@ -75,9 +79,9 @@ Escalation is Moderator → Senior Moderator → Manager → Director → Admini
 
 Seeded story, if you want to click it:
 
-1. Sign in as Jordan. The river card says Marcus shared it, and it is not on Discover.
-2. Sign out. Sign in as Alex. The river note is absent. Discover still lists Riley’s market post and says it is not on the timeline.
-3. On that Discover card, choose **Share to keep**, pick one friend, and confirm. That friend now has it. Other people do not.
+1. Sign in as Jordan. The river card says Marcus shared it. Riley’s market photo is not there.
+2. Sign out. Sign in as Alex. The river note is absent. The market photo is absent too.
+3. Sign in as Marcus. Open the market photo, choose Share, and send it only to Alex. Alex has it. Sam and Jordan still do not.
 4. Sign in as `casey`, then `rowan`, then `sage`, and compare which Staff panels exist.
 
 ## Build the Android debug APK
@@ -122,9 +126,8 @@ If `ANDROID_HOME` is missing, `npm run build:apk` exits with instructions and do
 - Demo sign-in as a seeded person
 - Timeline of shares addressed to you, plus posts you published to yourself
 - Each timeline item names who shared it and keeps the sharing history
-- Create notes, photos, video, shorts, longer video, and reels, then choose friends, groups, custom lists, your own timeline, or Discover
+- Create notes, photos, video, shorts, longer video, and reels, then choose friends, groups, custom lists, or your own timeline
 - Share and reshare onto timelines (not into a message inbox)
-- Discover as a separate public shelf, including a “most passed along” list that still does not touch timelines
 - Friends: requests, accept, decline, remove, block, groups, lists
 - Who can share with you, who can add you, who can reshare
 - My Posts: recipients, reshares, whether it is on your own timeline
@@ -147,4 +150,4 @@ If `ANDROID_HOME` is missing, `npm run build:apk` exits with instructions and do
 
 ## Product rule in the data model
 
-`getTimeline` reads the `shares` table where `to_user_id` is the signed-in person. A public post (`listed_on_discover = 1`) is not part of that query. It shows on a timeline only after `sharePost` writes a row addressed to that person.
+`getTimeline` reads the `shares` table where `to_user_id` is the signed-in person. A post is on a timeline only after `sharePost` writes a row addressed to that person.

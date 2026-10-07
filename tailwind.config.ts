@@ -16,8 +16,9 @@ const config: Config = {
         "stamp-deep": "#009e78",
       },
       fontFamily: {
-        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
-        serif: ["var(--font-serif)", "Georgia", "ui-serif", "serif"],
+        sans: ["var(--font-sans)", "ui-rounded", "ui-sans-serif", "system-ui", "sans-serif"],
+        serif: ["var(--font-display)", "ui-rounded", "sans-serif"],
+        display: ["var(--font-display)", "ui-rounded", "sans-serif"],
       },
       boxShadow: {
         card: "0 1px 0 rgba(47, 47, 47, 0.06)",

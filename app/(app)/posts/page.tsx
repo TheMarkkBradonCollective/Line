@@ -22,7 +22,7 @@ export default async function MyPostsPage({
       <p className="kicker">My Posts</p>
       <h1 className="mt-1 font-serif text-4xl">What you made, and where it went</h1>
       <p className="mt-2 text-sm text-muted">
-        Creating a post does not publish it to the world. This page shows who received it and who passed it on.
+        Creating a post does not send it anywhere. This page shows who received it and who passed it on.
       </p>
       <div className="mt-4">
         <Notice notice={query.notice} error={query.error} />
@@ -33,7 +33,6 @@ export default async function MyPostsPage({
           <article key={post.id} className="desk-card p-4">
             <div className="flex flex-wrap items-center gap-2">
               <Badge>{kindLabel(post.kind)}</Badge>
-              {post.listedOnDiscover ? <Badge>Discover</Badge> : <Badge>Not public</Badge>}
               {onOwnTimeline ? <Badge>On your timeline</Badge> : <Badge>Not on your timeline</Badge>}
               {post.hidden ? <Badge>Hidden by staff</Badge> : null}
             </div>
@@ -49,7 +48,7 @@ export default async function MyPostsPage({
                   {item.from_user_id === user.id ? "You" : item.display_name} → {item.to_user_id === user.id ? "you" : item.display_name} · {item.share_kind} · {formatWhen(item.created_at)}
                 </li>
               ))}
-              {deliveries.length === 0 ? <li>Not shared with anyone. {post.listedOnDiscover ? "It sits on Discover only." : "It has no audience yet."}</li> : null}
+              {deliveries.length === 0 ? <li>Not shared with anyone yet.</li> : null}
             </ul>
             <Link className="mt-3 inline-block text-sm underline" href={`/post/${post.id}`}>
               Open

@@ -2,13 +2,13 @@
 
 LINE is not a feed where content finds people. A post, photo, video, Reel, Short, or other content appears on someone’s personal timeline only when a person intentionally shares it with them (or they publish to their own timeline). Nothing appears because an algorithm decided they should see it.
 
-Discover is a separate area and never auto-fills the personal timeline.
+There is no public, trending, or recommended shelf. Content only moves from person to person.
 
 Flow: Create → Share → Receive → Reshare → Continue.
 
 ## Main navigation
 
-Timeline, Create, Discover, Friends, Profile. Also: My Posts, meaningful notifications (not a second timeline). Staff accounts get an internal Staff area gated by explicit permissions, not job title alone.
+Timeline, Create, Friends, Profile, and Alerts. Also: My Posts. Staff accounts get an internal Staff area gated by explicit permissions, not job title alone. On a phone, those primary sections sit in a bottom tab bar. Create is the raised camera button.
 
 ## Timeline
 
@@ -30,17 +30,13 @@ Content the user created, who it was shared with, reshares, sharing activity.
 
 Someone shared something with you, someone shared your post onward, someone reshared your video.
 
-## Discover
-
-Public posts and videos, popular or trending or recommended public content, creators. Separate from the timeline. Keeping something means sharing it with someone.
-
 ## Profile
 
-Avatar, name, username, bio, friends, their posts, public content, shared activity where appropriate. Public versus privately shared content is a user choice.
+Green cover band, round avatar, name, username, bio, and counts for friends, posts, and shares. Your own grid shows posts you created. Someone else’s grid shows only posts they shared with you.
 
 ## Privacy
 
-Who can share with you, who can view posts, who can reshare, who can add you as a friend, public or private content, blocking, reporting. Users are not forced to receive unwanted content because someone found their profile.
+Who can share with you, who can reshare, who can add you as a friend, blocking, reporting. Users are not forced to receive unwanted content because someone found their profile. A post is either on the creator’s own timeline or shared with chosen people.
 
 ## Staff
 
@@ -60,6 +56,6 @@ Reports: posts, videos, profiles, messages, accounts, harassment, spam, abuse, o
 
 Next.js App Router, TypeScript, Tailwind, shadcn-style UI, SQLite via better-sqlite3. Demo login by picking a seeded user. Capacitor Android project with `npm run build:apk`. `ANDROID_HOME` is required to produce an APK. The binary is not committed.
 
-Seed: friends, a Marcus → Jordan-only share that Alex and Sam do not receive, one public Discover item on nobody’s timeline until it is shared, and one staff account per role with limited permissions.
+Seed: friends, a Marcus → Jordan-only share that Alex and Sam do not receive, Riley’s market photo shared only with Marcus (so a later share to Alex does not reach Sam or Jordan), and one staff account per role with limited permissions.
 
 `npm run test:core-rule` asserts the share-only rule.

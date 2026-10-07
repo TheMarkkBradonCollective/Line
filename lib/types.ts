@@ -28,7 +28,6 @@ export type Post = {
   body: string;
   mediaLabel: string | null;
   mediaTone: string | null;
-  listedOnDiscover: number;
   allowReshare: number;
   hidden: number;
   hiddenReason: string | null;
@@ -60,7 +59,6 @@ export type PostRow = {
   body: string;
   media_label: string | null;
   media_tone: string | null;
-  listed_on_discover: number;
   allow_reshare: number;
   hidden: number;
   hidden_reason: string | null;
@@ -95,7 +93,6 @@ export function mapPost(row: PostRow): Post {
     body: row.body,
     mediaLabel: row.media_label,
     mediaTone: row.media_tone,
-    listedOnDiscover: row.listed_on_discover,
     allowReshare: row.allow_reshare,
     hidden: row.hidden,
     hiddenReason: row.hidden_reason,

@@ -15,7 +15,9 @@ import {
   declineFriend,
   deleteGroup,
   deleteList,
+  canViewPost,
   expandRecipients,
+  getPost,
   getUserByUsername,
   markAllNotificationsRead,
   MEDIA_PLATES,
@@ -23,8 +25,8 @@ import {
   removeFriend,
   requestFriend,
   setAllowReshare,
-  setDiscoverListing,
   sharePost,
+  toggleLike,
   unblockUser,
   updatePrivacy,
   updateProfile,
@@ -97,13 +99,11 @@ function choiceOf(formData: FormData): RecipientChoice {
   };
 }
 
-function shareSummary(created: number, rejected: { name: string; reason: string }[], discover: boolean) {
+function shareSummary(created: number, rejected: { name: string; reason: string }[]) {
   const parts: string[] = [];
   if (created) {
     parts.push(`Placed on ${created} timeline${created === 1 ? "" : "s"}.`);
   }
-  if (discover) parts.push("Listed on Discover. Discover does not fill anyone's timeline.");
-  if (!created && discover) parts.push("It is not on your timeline.");
   if (rejected.length) {
     parts.push(`Not delivered: ${rejected.map((item) => `${item.name} — ${item.reason}`).join(" ")}`);
   }
@@ -130,22 +130,19 @@ export async function createPostAction(formData: FormData) {
   await run("/create", async (user) => {
     const kind = String(formData.get("kind") || "text");
     const plate = MEDIA_PLATES.find((item) => item.id === String(formData.get("plate") || ""));
-    const listed = formData.get("discover") === "on";
     const result = publishPost(getDb(), user.id, {
       kind,
       body: String(formData.get("body") || ""),
       mediaLabel: plate?.label ?? null,
       mediaTone: plate?.tone ?? null,
-      listedOnDiscover: listed,
       allowReshare: formData.get("allow_reshare") === "on",
       choice: choiceOf(formData),
       note: String(formData.get("note") || ""),
     });
     revalidatePath("/timeline");
-    revalidatePath("/discover");
     revalidatePath("/posts");
     const extra = result.errors.length ? ` ${result.errors.join(" ")}` : "";
-    redirect(withQuery("/timeline", "notice", `${shareSummary(result.created.length, result.rejected, listed)}${extra}`));
+    redirect(withQuery("/timeline", "notice", `${shareSummary(result.created.length, result.rejected)}${extra}`));
   });
 }
 
@@ -168,7 +165,7 @@ export async function shareExistingAction(formData: FormData) {
     revalidatePath("/timeline");
     revalidatePath("/notifications");
     const note = expanded.errors.length ? ` ${expanded.errors.join(" ")}` : "";
-    redirect(withQuery("/timeline", "notice", `${shareSummary(result.created.length, result.rejected, false)}${note}`));
+    redirect(withQuery("/timeline", "notice", `${shareSummary(result.created.length, result.rejected)}${note}`));
   });
 }
 
@@ -283,15 +280,15 @@ export async function updatePrivacyAction(formData: FormData) {
   });
 }
 
-export async function setDiscoverAction(formData: FormData) {
-  const postId = Number(formData.get("postId"));
-  await run(`/post/${postId}`, async (user) => {
-    setDiscoverListing(getDb(), user.id, postId, formData.get("listed") === "1");
-    revalidatePath("/discover");
-    redirect(withQuery(`/post/${postId}`, "notice", formData.get("listed") === "1"
-      ? "On Discover now. It still is not on anyone's timeline unless it was shared."
-      : "Removed from Discover. Shares that already happened stay put."));
-  });
+export async function toggleLikeAction(postId: number) {
+  const user = await getCurrentUser();
+  if (!user || user.suspended) throw new Error("Sign in to react.");
+  const db = getDb();
+  const post = getPost(db, postId);
+  if (!post || !canViewPost(db, user, post) || post.hidden) throw new Error("That post is not on your timeline.");
+  const next = toggleLike(db, user.id, postId);
+  revalidatePath("/timeline");
+  return { liked: next.liked, likeCount: next.likeCount };
 }
 
 export async function setReshareAction(formData: FormData) {
@@ -346,7 +343,7 @@ export async function suspendAction(formData: FormData) {
 export async function hideAction(formData: FormData) {
   await run("/staff", async (user) => {
     hidePost(getDb(), user, Number(formData.get("postId")), String(formData.get("reason") || ""));
-    redirect(withQuery("/staff", "notice", "Post hidden. It leaves timelines and Discover. The share history remains."));
+    redirect(withQuery("/staff", "notice", "Post hidden. It leaves timelines. The share history remains."));
   });
 }
 

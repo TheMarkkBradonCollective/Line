@@ -1,6 +1,5 @@
 import { loginAction } from "@/app/actions";
 import { Notice } from "@/components/notice";
-import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { ROLE_LABELS, type Role } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
@@ -25,41 +24,46 @@ export default async function HomePage({
   const staff = users.filter((user) => user.role !== "user").sort((a, b) => roleRank(a.role) - roleRank(b.role));
 
   return (
-    <main className="mx-auto grid max-w-6xl gap-10 px-5 py-10 md:grid-cols-[1.1fr_0.9fr] md:py-16">
-      <section>
-        <p className="kicker">LINE</p>
-        <h1 className="mt-3 font-serif text-6xl leading-[0.95] tracking-tight md:text-7xl">{tagline}</h1>
-        <p className="mt-6 max-w-xl text-lg leading-relaxed">
-          A post, photo, or video shows up on a timeline only when a person shares it with that person, or when they publish it to their own. LINE is not a feed that goes looking for an audience.
-        </p>
-        <ol className="mt-8 grid gap-3 text-sm sm:grid-cols-5">
-          {["Create", "Share", "Receive", "Reshare", "Continue"].map((step, index) => (
-            <li key={step} className="border border-rule bg-card px-3 py-3">
-              <span className="kicker">0{index + 1}</span>
-              <p className="mt-1 font-medium">{step}</p>
-            </li>
-          ))}
-        </ol>
-        <div className="mt-8 max-w-xl space-y-3 text-sm leading-relaxed text-muted">
-          <p>Discover is a separate public shelf. Browsing it, or being recommended something there, never places it on your timeline. Keeping a public post means sharing it with someone.</p>
-          <p>You choose who may share with you. Finding your profile is not permission to deliver a post.</p>
-          <p>{signups ? "New accounts are open." : "New accounts are closed. This demo signs you in as a seeded person. There is no password."}</p>
+    <main className="min-h-screen bg-white">
+      <header className="safe-top bg-pine text-white">
+        <div className="mx-auto flex max-w-5xl items-center px-5 py-4">
+          <p className="font-display text-4xl font-bold leading-none tracking-tight">LINE</p>
         </div>
-        {current && !current.suspended ? (
-          <p className="mt-6">
-            <Link className="underline" href="/timeline">
-              Continue as {current.displayName}
-            </Link>
+      </header>
+      <div className="mx-auto grid max-w-5xl gap-8 px-5 py-8 md:grid-cols-[1.05fr_0.95fr] md:py-12">
+        <section>
+          <h1 className="font-display text-5xl font-semibold leading-[0.95] md:text-6xl">{tagline}</h1>
+          <p className="mt-4 max-w-xl text-lg font-semibold leading-relaxed">
+            A post, photo, or video shows up on a timeline only when a person shares it with that person, or when they put it on their own. Nothing arrives because an algorithm went looking.
           </p>
-        ) : null}
-      </section>
-      <section>
-        <Notice notice={query.notice} error={query.error} />
-        <h2 className="font-serif text-3xl">Sign in</h2>
-        <p className="mt-2 text-sm text-muted">Pick a person. Staff desks are gated by permissions, so the role you pick changes which tools open.</p>
-        <AccountList title="People" users={people} />
-        <AccountList title="Staff" users={staff} showRole />
-      </section>
+          <ol className="mt-6 flex flex-wrap gap-2 text-sm font-extrabold">
+            {["Create", "Share", "Receive", "Reshare", "Continue"].map((step, index) => (
+              <li key={step} className="rounded-full bg-[#e7f8f3] px-3 py-2 text-pine">
+                0{index + 1} {step}
+              </li>
+            ))}
+          </ol>
+          <div className="mt-6 max-w-xl space-y-3 text-sm font-semibold leading-relaxed text-muted">
+            <p>You choose who receives it: one friend, a few friends, a group, or a list. It lands on their timeline. It is not a message thread.</p>
+            <p>Finding someone’s profile is not permission to deliver a post. They decide who may share with them.</p>
+            <p>{signups ? "New accounts are open." : "New accounts are closed. This demo signs you in as a seeded person. There is no password."}</p>
+          </div>
+          {current && !current.suspended ? (
+            <p className="mt-6">
+              <Link className="inline-flex rounded-full bg-pine px-4 py-2 font-extrabold text-white" href="/timeline">
+                Continue as {current.displayName}
+              </Link>
+            </p>
+          ) : null}
+        </section>
+        <section>
+          <Notice notice={query.notice} error={query.error} />
+          <h2 className="font-display text-3xl font-semibold">Sign in</h2>
+          <p className="mt-1 text-sm font-semibold text-muted">Pick a person. Staff desks open from permission grants, not from the title alone.</p>
+          <AccountList title="People" users={people} />
+          <AccountList title="Staff" users={staff} showRole />
+        </section>
+      </div>
     </main>
   );
 }
@@ -74,28 +78,25 @@ function AccountList({
   showRole?: boolean;
 }) {
   return (
-    <div className="mt-6">
+    <div className="mt-5">
       <h3 className="kicker">{title}</h3>
       <ul className="mt-2 grid gap-2">
         {users.map((user) => (
           <li key={user.username}>
             <form action={loginAction}>
               <input type="hidden" name="username" value={user.username} />
-              <Button type="submit" variant="outline" className="h-auto w-full items-start justify-start gap-3 px-3 py-3 text-left">
-                <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center text-xs text-card" style={{ background: user.avatarColor }}>
+              <button type="submit" className="flex w-full items-center gap-3 rounded-2xl border border-[#ededed] bg-white px-3 py-2.5 text-left hover:border-pine">
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-extrabold text-white" style={{ background: user.avatarColor }}>
                   {user.initials}
                 </span>
                 <span className="min-w-0">
-                  <span className="block font-medium text-ink">
-                    {user.displayName} <span className="font-normal text-muted">@{user.username}</span>
+                  <span className="block truncate font-extrabold text-ink">
+                    {user.displayName} <span className="font-bold text-muted">@{user.username}</span>
                   </span>
-                  {showRole ? (
-                    <span className="block text-xs uppercase tracking-wider text-muted">{ROLE_LABELS[user.role as Role] ?? user.role}</span>
-                  ) : (
-                    <span className="block truncate text-xs text-muted">{user.bio}</span>
-                  )}
+                  <span className="block truncate text-sm font-semibold text-muted">{user.bio}</span>
+                  {showRole ? <span className="mt-0.5 block text-[11px] font-extrabold uppercase tracking-wide text-pine">{ROLE_LABELS[user.role as Role] ?? user.role}</span> : null}
                 </span>
-              </Button>
+              </button>
             </form>
           </li>
         ))}

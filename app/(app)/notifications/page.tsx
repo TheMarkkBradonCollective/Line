@@ -29,7 +29,13 @@ export default async function NotificationsPage() {
         Someone shared something with you, or shared your post onward. This is not a second timeline.
       </p>
       <ul className="mt-5 grid gap-2">
-        {items.length === 0 ? <li className="text-sm text-muted">No alerts.</li> : null}
+        {items.length === 0 ? (
+          <li className="rounded-3xl bg-[#f7f7f7] px-4 py-8 text-center">
+            <p className="text-3xl" aria-hidden>🔔</p>
+            <p className="mt-2 font-display text-xl font-semibold">No alerts</p>
+            <p className="mt-1 text-sm font-semibold text-muted">When someone shares with you, or passes your post on, it shows up here. This is not another timeline.</p>
+          </li>
+        ) : null}
         {items.map((item) => (
           <li key={item.id} className="border border-rule bg-card px-3 py-3 text-sm">
             <p className={item.read ? "text-muted" : "font-medium"}>{item.text}</p>

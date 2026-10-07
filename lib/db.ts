@@ -96,7 +96,6 @@ CREATE TABLE IF NOT EXISTS posts (
   body TEXT NOT NULL,
   media_label TEXT,
   media_tone TEXT,
-  listed_on_discover INTEGER NOT NULL DEFAULT 0,
   allow_reshare INTEGER NOT NULL DEFAULT 1,
   hidden INTEGER NOT NULL DEFAULT 0,
   hidden_reason TEXT,
@@ -181,9 +180,19 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS reactions (
+  user_id INTEGER NOT NULL,
+  post_id INTEGER NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'like',
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, post_id, kind),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (post_id) REFERENCES posts(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_shares_to ON shares(to_user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_shares_post ON shares(post_id);
-CREATE INDEX IF NOT EXISTS idx_posts_discover ON posts(listed_on_discover, created_at);
+CREATE INDEX IF NOT EXISTS idx_reactions_post ON reactions(post_id, kind);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read, created_at);
 CREATE INDEX IF NOT EXISTS idx_reports_queue ON reports(queue, status);
 

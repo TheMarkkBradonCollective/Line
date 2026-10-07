@@ -110,7 +110,6 @@ function mustShare(
 export function seed(db: Database.Database) {
   const settings: [string, string][] = [
     ["sharing_paused", "0"],
-    ["discover_enabled", "1"],
     ["signups_open", "0"],
     ["site_tagline", "Sent, not served."],
     ["staff_reason_required", "1"],
@@ -154,10 +153,38 @@ export function seed(db: Database.Database) {
   insertUser(db, {
     username: "riley",
     displayName: "Riley Chen",
-    bio: "Public market notes. They stay on Discover until someone chooses to pass one on. I do not accept shares onto my timeline.",
+    bio: "Market notes go to the people I pick. I do not accept shares onto my timeline.",
     color: "#6b3a55",
     initials: "RC",
     whoCanShare: "nobody",
+  });
+  insertUser(db, {
+    username: "noah",
+    displayName: "Noah Park",
+    bio: "Short loops from the hall and the bowl. If it is on your timeline, I sent it.",
+    color: "#24527a",
+    initials: "NP",
+  });
+  insertUser(db, {
+    username: "mina",
+    displayName: "Mina Cho",
+    bio: "Dusk walks and one take. I share with the people who were there.",
+    color: "#c44b7a",
+    initials: "MC",
+  });
+  insertUser(db, {
+    username: "theo",
+    displayName: "Theo Brooks",
+    bio: "Creek, rain, and the long way home. I pass things to Jordan and Marcus.",
+    color: "#1a936f",
+    initials: "TB",
+  });
+  insertUser(db, {
+    username: "priya",
+    displayName: "Priya Nair",
+    bio: "Cardamom buns and the Saturday table. Photos go to Sam and Alex.",
+    color: "#e05a33",
+    initials: "PN",
   });
 
   insertUser(db, {
@@ -222,6 +249,10 @@ export function seed(db: Database.Database) {
   const alex = user(db, "alex");
   const sam = user(db, "sam");
   const riley = user(db, "riley");
+  const noah = user(db, "noah");
+  const mina = user(db, "mina");
+  const theo = user(db, "theo");
+  const priya = user(db, "priya");
   const casey = user(db, "casey");
   const quinn = user(db, "quinn");
   const avery = user(db, "avery");
@@ -234,6 +265,15 @@ export function seed(db: Database.Database) {
     [jordan, sam],
     [alex, sam],
     [marcus, riley],
+    [riley, noah],
+    [jordan, noah],
+    [jordan, theo],
+    [marcus, theo],
+    [alex, mina],
+    [sam, mina],
+    [sam, priya],
+    [alex, priya],
+    [jordan, priya],
   ] as const) {
     connect(db, pair[0].id, pair[1].id);
   }
@@ -268,8 +308,7 @@ export function seed(db: Database.Database) {
 
   const bread = createPost(db, sam.id, {
     kind: "text",
-    body: "The brown loaf needs another ten minutes. This note goes to Marcus, not to the whole friend list.",
-    listedOnDiscover: false,
+    body: "The brown loaf needs another ten minutes 🍞 This note goes to Marcus, not the whole friend list.",
     allowReshare: true,
     seedKey: "bread",
     createdAt: at(5),
@@ -283,8 +322,7 @@ export function seed(db: Database.Database) {
 
   const river = createPost(db, marcus.id, {
     kind: "text",
-    body: "The river path is open again after the rain. I am sending this to Jordan and nobody else.",
-    listedOnDiscover: false,
+    body: "The river path is open again after the rain 🌧️ I am sending this to Jordan and nobody else.",
     allowReshare: true,
     seedKey: "river",
     createdAt: at(10),
@@ -298,10 +336,9 @@ export function seed(db: Database.Database) {
 
   const peaches = createPost(db, jordan.id, {
     kind: "photo",
-    body: "Brought extra peaches. This goes to the Saturday kitchen group — Alex and Sam — and not to Marcus.",
+    body: "Brought extra peaches 🍑 Saturday kitchen — Alex and Sam — and not Marcus.",
     mediaLabel: "Kitchen table, late",
-    mediaTone: "#d08b6a",
-    listedOnDiscover: false,
+    mediaTone: "#ff8fab,#fb6f92",
     allowReshare: true,
     seedKey: "peaches",
     createdAt: at(20),
@@ -316,6 +353,25 @@ export function seed(db: Database.Database) {
     createdAt: at(21),
   });
 
+  const timer = createPost(db, jordan.id, {
+    kind: "reel",
+    body: "Twelve seconds of the kitchen timer ⏱️ Saturday kitchen, same two people.",
+    mediaLabel: "Kitchen table, late",
+    mediaTone: "#ff8fab,#fb6f92",
+    allowReshare: true,
+    seedKey: "timer",
+    createdAt: at(24),
+  });
+  mustShare(db, {
+    postId: timer,
+    fromUserId: jordan.id,
+    recipients: [
+      { userId: alex.id, shareKind: "group", groupId: saturday },
+      { userId: sam.id, shareKind: "group", groupId: saturday },
+    ],
+    createdAt: at(25),
+  });
+
   mustShare(db, {
     postId: bread,
     fromUserId: marcus.id,
@@ -326,8 +382,7 @@ export function seed(db: Database.Database) {
 
   const gate = createPost(db, marcus.id, {
     kind: "text",
-    body: "The side gate lock sticks. I published this to my own timeline and did not send it to anyone.",
-    listedOnDiscover: false,
+    body: "The side gate lock sticks. I put this on my own timeline and did not send it to anyone.",
     allowReshare: false,
     seedKey: "gate",
     createdAt: at(50),
@@ -339,39 +394,146 @@ export function seed(db: Database.Database) {
     createdAt: at(51),
   });
 
-  createPost(db, riley.id, {
+  const market = createPost(db, riley.id, {
     kind: "photo",
-    body: "Sunday market, north hall. This is public on Discover. It is not on anyone's timeline until a person shares it.",
+    body: "Sunday market, north hall 🍋 This one is for Marcus. It does not go anywhere else unless he passes it on.",
     mediaLabel: "North hall, morning light",
-    mediaTone: "#c4a574",
-    listedOnDiscover: true,
+    mediaTone: "#ffb703,#fb8500",
     allowReshare: true,
     seedKey: "market",
     createdAt: at(8),
   });
-  createPost(db, riley.id, {
+  mustShare(db, {
+    postId: market,
+    fromUserId: riley.id,
+    recipients: [{ userId: marcus.id, shareKind: "direct" }],
+    createdAt: at(8),
+  });
+  const reel = createPost(db, riley.id, {
     kind: "reel",
-    body: "A short look at the hall filling up. Public on Discover only. Sharing it is how someone keeps it.",
+    body: "The hall filling up before the stalls open. This loop goes to Noah.",
     mediaLabel: "How the hall fills up",
-    mediaTone: "#6e7f99",
-    listedOnDiscover: true,
+    mediaTone: "#ff5d8f,#ff9e00",
     allowReshare: true,
     seedKey: "hall-reel",
     createdAt: at(9),
   });
+  mustShare(db, {
+    postId: reel,
+    fromUserId: riley.id,
+    recipients: [{ userId: noah.id, shareKind: "direct" }],
+    createdAt: at(9),
+  });
 
-  const market = db.prepare("SELECT id FROM posts WHERE seed_key = 'market'").get() as { id: number };
+  const creek = createPost(db, theo.id, {
+    kind: "video",
+    body: "The creek is loud after the rain. Jordan, this is the long way home 🌊",
+    mediaLabel: "Creek under the bridge",
+    mediaTone: "#2ec4b6,#1a936f",
+    allowReshare: true,
+    seedKey: "creek",
+    createdAt: at(30),
+  });
+  mustShare(db, {
+    postId: creek,
+    fromUserId: theo.id,
+    recipients: [{ userId: jordan.id, shareKind: "direct" }],
+    createdAt: at(31),
+  });
+
+  const buns = createPost(db, priya.id, {
+    kind: "photo",
+    body: "Cardamom buns, still warm. Sam and Alex, come take one before they are gone.",
+    mediaLabel: "Tray of cardamom buns",
+    mediaTone: "#f4a261,#e76f51",
+    allowReshare: true,
+    seedKey: "buns",
+    createdAt: at(32),
+  });
+  mustShare(db, {
+    postId: buns,
+    fromUserId: priya.id,
+    recipients: [
+      { userId: sam.id, shareKind: "direct" },
+      { userId: alex.id, shareKind: "direct" },
+    ],
+    createdAt: at(33),
+  });
+
+  const dusk = createPost(db, mina.id, {
+    kind: "short",
+    body: "One loop around the block until the light hits 🌇 For Alex.",
+    mediaLabel: "Side street at dusk",
+    mediaTone: "#7b2cbf,#c77dff",
+    allowReshare: true,
+    seedKey: "dusk",
+    createdAt: at(34),
+  });
+  mustShare(db, {
+    postId: dusk,
+    fromUserId: mina.id,
+    recipients: [{ userId: alex.id, shareKind: "direct" }],
+    createdAt: at(35),
+  });
+
+  const bowl = createPost(db, noah.id, {
+    kind: "reel",
+    body: "Painted bowl behind the hall. Jordan, you said you wanted the line.",
+    mediaLabel: "Painted skate bowl",
+    mediaTone: "#ff5d8f,#ff9e00",
+    allowReshare: true,
+    seedKey: "bowl",
+    createdAt: at(36),
+  });
+  mustShare(db, {
+    postId: bowl,
+    fromUserId: noah.id,
+    recipients: [{ userId: jordan.id, shareKind: "direct" }],
+    createdAt: at(37),
+  });
+
+  const crackle = createPost(db, sam.id, {
+    kind: "video",
+    body: "Listen to the crackle. Marcus, the loaf is almost there.",
+    mediaLabel: "Cracked loaf, warm",
+    mediaTone: "#e09f3e,#9c6644",
+    allowReshare: false,
+    seedKey: "crackle",
+    createdAt: at(38),
+  });
+  mustShare(db, {
+    postId: crackle,
+    fromUserId: sam.id,
+    recipients: [{ userId: marcus.id, shareKind: "direct" }],
+    createdAt: at(39),
+  });
+
+  const like = db.prepare(
+    "INSERT INTO reactions (user_id, post_id, kind, created_at) VALUES (?, ?, 'like', ?)",
+  );
+  like.run(jordan.id, river, at(12));
+  like.run(marcus.id, bread, at(7));
+  like.run(alex.id, peaches, at(22));
+  like.run(sam.id, peaches, at(23));
+  like.run(marcus.id, market, at(8));
+  like.run(noah.id, reel, at(9));
+  like.run(jordan.id, creek, at(31));
+  like.run(sam.id, buns, at(33));
+  like.run(alex.id, buns, at(34));
+  like.run(alex.id, dusk, at(35));
+  like.run(jordan.id, bowl, at(37));
+
   createReport(db, jordan.id, {
     targetType: "profile",
     targetId: riley.id,
     category: "other",
-    details: "Sample case for the moderator queue. Riley's public posts are not on my timeline.",
+    details: "Sample case for the moderator queue. Nothing from Riley was shared to my timeline.",
   });
   const spam = createReport(db, alex.id, {
     targetType: "post",
-    targetId: market.id,
+    targetId: market,
     category: "spam",
-    details: "Please review this Discover post. It was never shared to me.",
+    details: "Please review Riley's market note. It was shared with Marcus, not with me.",
   });
   escalateReport(db, quinn, spam, "Needs a senior moderator.");
   escalateReport(db, avery, spam, "Passing this case to a manager.");

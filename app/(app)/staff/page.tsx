@@ -294,10 +294,9 @@ export default async function StaffPage({
       {has("manage_platform_settings") ? (
         <SettingBlock
           title="Platform"
-          note="These switches do not push Discover onto timelines."
+          note="Tagline and signups. Nothing here delivers a post."
           fields={[
             ["site_tagline", "Tagline", getSetting(db, "site_tagline")],
-            ["discover_enabled", "Discover enabled (1 or 0)", getSetting(db, "discover_enabled")],
             ["signups_open", "Signups open (1 or 0)", getSetting(db, "signups_open")],
           ]}
         />

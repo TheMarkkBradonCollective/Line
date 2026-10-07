@@ -378,7 +378,6 @@ export function listAudit(db: Database.Database, actor: StaffActor) {
 
 const SETTING_GATES: Record<string, Permission> = {
   site_tagline: "manage_platform_settings",
-  discover_enabled: "manage_platform_settings",
   signups_open: "manage_platform_settings",
   staff_reason_required: "manage_security_settings",
   billing_note: "manage_financial_settings",

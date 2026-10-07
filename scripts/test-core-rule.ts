@@ -6,7 +6,6 @@ import { queuesForPermissions, ROLE_TEMPLATES } from "../lib/permissions";
 import { seed } from "../lib/seed";
 import {
   coreRuleViolations,
-  getDiscover,
   getPostBySeedKey,
   getTimeline,
   getUserByUsername,
@@ -68,15 +67,11 @@ check(!alexTimeline.has(bread.id), "Alex was not a recipient of the loaf note");
 check(marcusTimeline.has(gate.id), "Marcus published the gate note to himself");
 check(!jordanTimeline.has(gate.id) && !alexTimeline.has(gate.id) && !samTimeline.has(gate.id), "The self-published note stays with Marcus");
 
-const discoverIds = new Set(getDiscover(db).map((item) => item.post.id));
-check(discoverIds.has(market.id) && discoverIds.has(reel.id), "Public posts should sit on Discover");
-check(!discoverIds.has(river.id), "A private share must not appear on Discover by itself");
-
-for (const username of ["marcus", "jordan", "alex", "sam", "riley"]) {
-  const timeline = ids(username);
-  check(!timeline.has(market.id), `Discover post market is on ${username}'s timeline before anyone shared it`);
-  check(!timeline.has(reel.id), `Discover reel is on ${username}'s timeline before anyone shared it`);
-}
+check(marcusTimeline.has(market.id), "Riley shared the market photo with Marcus");
+check(!alexTimeline.has(market.id) && !samTimeline.has(market.id) && !jordanTimeline.has(market.id), "The market photo was not shared with Alex, Sam, or Jordan");
+check(!rileyTimeline.has(market.id), "Riley did not publish the market photo to their own timeline");
+check(ids("noah").has(reel.id), "Riley shared the hall reel with Noah");
+check(!marcusTimeline.has(reel.id) && !jordanTimeline.has(reel.id) && !alexTimeline.has(reel.id), "The hall reel stays with Noah");
 
 const leakedBefore = coreRuleViolations(db);
 check(leakedBefore.length === 0, `Core rule failed before the extra share: ${leakedBefore.join("; ")}`);
@@ -86,12 +81,11 @@ const kept = sharePost(db, {
   fromUserId: marcus.id,
   recipients: [{ userId: alex.id, shareKind: "direct" }],
 });
-check(kept.rejected.length === 0, `Sharing the Discover post should work: ${kept.rejected.map((item) => item.reason).join(" ")}`);
+check(kept.rejected.length === 0, `Sharing the market photo should work: ${kept.rejected.map((item) => item.reason).join(" ")}`);
 check(ids("alex").has(market.id), "After Marcus shares the market post with Alex, it is on Alex's timeline");
-check(!ids("sam").has(market.id), "Sharing with Alex must not place the Discover post on Sam's timeline");
-check(!ids("jordan").has(market.id), "Sharing with Alex must not place the Discover post on Jordan's timeline");
-check(!ids("riley").has(market.id), "The creator's Discover post stays off their timeline until someone shares it there");
-check(getDiscover(db).some((item) => item.post.id === market.id), "Sharing does not remove a post from Discover");
+check(!ids("sam").has(market.id), "Sharing with Alex must not place the market post on Sam's timeline");
+check(!ids("jordan").has(market.id), "Sharing with Alex must not place the market post on Jordan's timeline");
+check(!ids("riley").has(market.id), "Passing the market photo to Alex does not put it on Riley's timeline");
 
 const refused = sharePost(db, {
   postId: market.id,
@@ -178,5 +172,5 @@ check(updateBlocked, "Audit history is append-only");
 
 console.log("core rule ok");
 console.log("Jordan has the river note. Alex and Sam do not.");
-console.log("Discover items stay off every timeline until a person shares one.");
+console.log("Marcus can pass Riley's market photo to Alex without Sam or Jordan receiving it.");
 console.log("Administrator has no platform ownership. Founder does.");

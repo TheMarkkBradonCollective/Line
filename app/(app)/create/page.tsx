@@ -29,11 +29,11 @@ export default async function CreatePage({
   const paused = getSetting(db, "sharing_paused") === "1";
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="px-4">
       <p className="kicker">Create</p>
-      <h1 className="mt-1 font-serif text-4xl">Make it, then choose who receives it</h1>
-      <p className="mt-2 text-sm text-muted">
-        A new post stays off every timeline, including yours, until you send it. Listing it on Discover is a separate choice and still does not deliver it.
+      <h1 className="mt-1 font-display text-4xl font-semibold">Make it, then choose who receives it</h1>
+      <p className="mt-2 text-sm font-semibold text-muted">
+        A new post stays off every timeline, including yours, until you send it to someone or to yourself.
       </p>
       <div className="mt-5">
         <Notice notice={query.notice} error={query.error} />
@@ -63,19 +63,15 @@ export default async function CreatePage({
           {MEDIA_PLATES.map((plate) => (
             <label key={plate.id} className="flex items-center gap-3 border border-rule bg-card px-3 py-2 text-sm">
               <input type="radio" name="plate" value={plate.id} />
-              <span className="inline-block h-8 w-8 border border-rule" style={{ background: plate.tone }} />
+              <span
+                className="inline-block h-8 w-8 rounded-lg border border-white shadow"
+                style={{ background: `linear-gradient(135deg, ${plate.tone.split(",")[0]}, ${plate.tone.split(",")[1] ?? plate.tone.split(",")[0]})` }}
+              />
               <span>{plate.label}</span>
             </label>
           ))}
         </fieldset>
-        <label className="flex items-start gap-3 border border-rule bg-card p-3 text-sm">
-          <input className="mt-1" type="checkbox" name="discover" />
-          <span>
-            <span className="block font-medium">Also list on Discover</span>
-            <span className="text-muted">Public shelf only. This does not put the post on your timeline or anyone else’s.</span>
-          </span>
-        </label>
-        <label className="flex items-center gap-3 text-sm">
+        <label className="flex items-center gap-3 text-sm font-bold">
           <input type="checkbox" name="allow_reshare" defaultChecked />
           People who receive it may share it onward
         </label>
