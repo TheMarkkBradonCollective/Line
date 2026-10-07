@@ -32,6 +32,18 @@ npm start
 
 `npm start` also listens on port 43921.
 
+## Design
+
+LINE keeps Vine’s green (`#00BF8F`) and bold wordmark, on a token-based design system in `app/globals.css` and `tailwind.config.ts`:
+
+- Color tokens (green with deep, strong, soft, and tint shades, plus neutral surfaces and ink) as CSS variables. Dark mode follows `prefers-color-scheme`.
+- Bricolage Grotesque for headings and the wordmark, Inter for UI text. Icons are `lucide-react`.
+- Phone: green glass header, full-bleed cards, and a frosted tab bar with the raised Create button at the exact center (two tabs on each side, equal flex).
+- Desktop (1280px and up): left nav, centered feed, and a right rail of your own friends to share with. It is not a discover feed. From 768px to 1279px the right rail is hidden.
+- Every timeline card shows a shared-by chip with stacked avatars of the share chain, plus the note the sender added.
+- Share opens a bottom sheet (a dialog on desktop): search friends, pick groups and lists, multi-select, add a note, and see a “Sent” confirmation. `/share/[id]` renders the same picker as a full page.
+- Motion: card rise-in, like burst, share press, sheet slide-up, and skeleton loaders. All of it is turned off under `prefers-reduced-motion`.
+
 ## Core rule check
 
 ```bash
@@ -43,6 +55,7 @@ The script builds a throwaway SQLite database and asserts:
 - Marcus’s river note, shared only with Jordan, is on Jordan’s timeline and not on Alex’s, Sam’s, or Marcus’s.
 - Riley’s market photo is shared with Marcus only. The hall reel is shared with Noah only.
 - After Marcus passes the market photo to Alex, it appears on Alex’s timeline. Sam, Jordan, and Riley still do not have it.
+- Mina’s rooftop photo reaches Marcus through Alex and Jordan, and the timeline item reports that chain in order. Sam and Mina do not get it.
 - Every timeline row is a share addressed to that person.
 - Staff grants are explicit. Removing Moderator’s `review_reports` grant closes that queue even though the role title stays. Administrator does not have platform ownership. Founder does.
 - Audit rows cannot be updated or deleted.
@@ -53,14 +66,14 @@ People:
 
 | Username | You’ll see |
 | --- | --- |
-| `jordan` | The river note Marcus sent only to Jordan, Sam’s loaf note after Marcus passed it on, plus a creek video from Theo and a skate loop from Noah. Not the peaches. |
-| `alex` | The peaches Jordan sent to the Saturday kitchen group, Priya’s buns, and Mina’s dusk loop. Not the river note. Not Riley’s market photo until someone shares it. |
-| `sam` | The peaches and Priya’s buns. Not the river note. Not the loaf note (Sam sent that to Marcus). |
-| `marcus` | Sam’s loaf note, Riley’s market photo, and a gate note Marcus published to himself. The river note is in My Posts, not on Marcus’s timeline. |
+| `jordan` | The river note Marcus sent only to Jordan, Sam’s loaf note after Marcus passed it on, Mina’s rooftop photo after Alex passed it on, Marcus’s bridge photo and gate toast, a creek video from Theo, and a skate loop from Noah. Not the peaches. |
+| `alex` | The peaches Jordan sent to the Saturday kitchen group, Priya’s buns, Mina’s dusk loop and rooftop photo, and Marcus’s market coffee. Not the river note. Not Riley’s market photo until someone shares it. |
+| `sam` | The peaches, Priya’s buns, and Marcus’s porch-rain short. Not the river note. Not the loaf note (Sam sent that to Marcus). |
+| `marcus` | Mina’s rooftop photo at the end of a three-person chain (Mina → Alex → Jordan → Marcus), Priya’s buns passed on by Sam, Sam’s loaf note and crackle video, Riley’s market photo, and a gate note Marcus published to himself. The river note is in My Posts, not on Marcus’s timeline. Best account for screenshots. |
 | `riley` | An empty timeline. Riley sent the market photo to Marcus and the hall reel to Noah, and does not accept shares. |
 | `noah` | Riley’s hall reel. |
 | `mina` | An empty timeline until someone shares with her. Her dusk loop is on Alex’s timeline. |
-| `theo` | An empty timeline until someone shares with him. His creek video is on Jordan’s timeline. |
+| `theo` | Marcus’s bridge photo. His creek video is on Jordan’s timeline. |
 | `priya` | An empty timeline until someone shares with her. Her bun photo is on Sam’s and Alex’s timelines. |
 
 Staff, one account per role. The desk opens from permission grants, not from the title.
