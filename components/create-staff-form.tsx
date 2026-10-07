@@ -19,7 +19,7 @@ export function CreateStaffForm({ actorPermissions }: { actorPermissions: string
   }
 
   return (
-    <form action={createStaffAction} className="grid gap-3 border border-rule bg-card p-4">
+    <form action={createStaffAction} className="grid gap-3 rounded-2xl border border-line/70 bg-surface p-4">
       <p className="text-sm text-muted">
         The role is a label for the audit log and the sign-in list. Access is whichever boxes you leave checked. You cannot grant a permission you do not hold, and Administrator cannot grant ownership.
       </p>

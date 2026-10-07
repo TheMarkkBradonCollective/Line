@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { setReshareAction } from "@/app/actions";
+import { Info, Send } from "lucide-react";
+import { Avatar } from "@/components/avatar";
 import { LikeButton } from "@/components/like-button";
+import { ShareButton } from "@/components/share-button";
 import { LoopMedia } from "@/components/loop-media";
 import { Notice } from "@/components/notice";
 import { ReportForm } from "@/components/report-form";
@@ -40,53 +43,65 @@ export default async function PostPage({
   else if (post.authorId === user.id) title = "You created this. It reaches other people only when you share it.";
 
   return (
-    <div>
-      <div className="px-4 pt-4">
+    <div className="md:pt-6">
+      <div className="px-4 pt-4 md:px-0 md:pt-0">
         <Notice notice={query.notice} error={query.error} />
       </div>
-      <article>
-        <header className="px-4 pb-3">
-          <p className="kicker">{kindLabel(post.kind)}</p>
-          <h1 className="mt-1 font-display text-2xl font-semibold leading-tight">{title}</h1>
-          {staffView ? <p className="mt-1 text-sm font-semibold text-muted">Staff view. Hidden from timelines.</p> : null}
-          {post.hidden && post.hiddenReason ? <p className="mt-2 text-sm font-semibold">Hidden: {post.hiddenReason}</p> : null}
-        </header>
-        <LoopMedia kind={post.kind} label={post.mediaLabel} tone={post.mediaTone} body={post.body} />
-        <div className="px-4 py-3">
-          <p className="text-sm font-extrabold">
-            <Link className="text-ink" href={`/u/${author.username}`}>{author.displayName}</Link>
-            <span className="font-semibold text-muted"> · {formatWhen(post.createdAt)}</span>
-          </p>
-          {post.kind !== "text" ? <p className="mt-2 whitespace-pre-wrap text-[16px] font-semibold leading-relaxed">{post.body}</p> : null}
-        </div>
-        <div className="flex items-center gap-3 px-4 pb-4">
-          <Link href={`/share/${post.id}`} className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-pine text-white" aria-label="Share">
-            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-              <path d="M7 12h10" />
-              <path d="M13 7l5 5-5 5" />
-            </svg>
+      <article className="bg-surface md:overflow-hidden md:rounded-[28px] md:border md:border-line/60 md:shadow-e2">
+        <header className="flex items-center gap-3 px-4 py-3.5">
+          <Link href={`/u/${author.username}`} className="shrink-0 rounded-full">
+            <Avatar initials={author.initials} color={author.avatarColor} name={author.displayName} size="md" />
           </Link>
-          <span className="text-sm font-extrabold text-[#6b6b6b]">{shareCount}</span>
+          <div className="min-w-0 flex-1">
+            <Link className="block truncate text-[15px] font-semibold text-ink" href={`/u/${author.username}`}>
+              {author.displayName}
+            </Link>
+            <p className="truncate text-[12.5px] text-ink-3">
+              {kindLabel(post.kind)} · {formatWhen(post.createdAt)}
+            </p>
+          </div>
+        </header>
+        <p className="mx-4 mb-3 flex items-start gap-2 rounded-2xl bg-surface-2 px-3.5 py-2.5 text-[13px] text-ink-2">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand-strong" aria-hidden />
+          <span>
+            {title}
+            {staffView ? " Staff view. Hidden from timelines." : ""}
+            {post.hidden && post.hiddenReason ? ` Hidden: ${post.hiddenReason}` : ""}
+          </span>
+        </p>
+        <LoopMedia kind={post.kind} label={post.mediaLabel} tone={post.mediaTone} body={post.body} />
+        {post.kind !== "text" ? <p className="whitespace-pre-wrap px-4 pt-3.5 text-[16px] leading-relaxed">{post.body}</p> : null}
+        <div className="flex items-center gap-1 px-3 pb-3.5 pt-3">
+          {!post.hidden ? <ShareButton postId={post.id} count={shareCount} className="ml-1" /> : null}
           {!post.hidden ? <LikeButton postId={post.id} liked={liked} count={likeRow.c} /> : null}
         </div>
       </article>
 
-      <section className="mt-2 px-4">
-        <h2 className="font-display text-2xl font-semibold">Sharing history</h2>
-        <ul className="mt-2 grid gap-2 text-sm font-semibold">
-          {history.length === 0 ? <li className="text-muted">No one has shared this yet.</li> : null}
+      <section className="mt-6 px-4 md:px-0">
+        <h2 className="font-display text-lg font-bold tracking-tight">How it travelled</h2>
+        <p className="text-[13px] text-ink-3">Every hop is a person choosing a person.</p>
+        {history.length === 0 ? <p className="mt-3 text-sm text-ink-3">No one has shared this yet.</p> : null}
+        <ol className="relative mt-4 grid gap-4 pl-6 before:absolute before:bottom-2 before:left-[9px] before:top-2 before:w-[2px] before:rounded-full before:bg-brand-tint">
           {history.map((item) => (
-            <li key={item.id} className="rounded-2xl bg-[#f7f7f7] px-3 py-2">
-              {item.from_name} shared it with {item.from_user_id === item.to_user_id ? "their own timeline" : item.to_name}
-              {item.group_name ? ` via ${item.group_name}` : ""} · {formatWhen(item.created_at)}
-              {item.note ? <span className="block italic">“{item.note}”</span> : null}
+            <li key={item.id} className="relative">
+              <span className="absolute -left-6 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand text-brand-on ring-4 ring-[rgb(var(--bg))]">
+                <Send className="h-2.5 w-2.5" strokeWidth={3} aria-hidden />
+              </span>
+              <p className="text-[14.5px] leading-snug">
+                <span className="font-semibold">{item.from_name}</span>
+                {" → "}
+                <span className="font-semibold">{item.from_user_id === item.to_user_id ? "their own timeline" : item.to_name}</span>
+                {item.group_name ? <span className="text-ink-3"> via {item.group_name}</span> : null}
+              </p>
+              <p className="text-[12px] text-ink-3">{formatWhen(item.created_at)}</p>
+              {item.note ? <p className="mt-1.5 w-fit rounded-2xl rounded-tl-md bg-brand-soft px-3 py-1.5 text-[13.5px]">{item.note}</p> : null}
             </li>
           ))}
-        </ul>
+        </ol>
       </section>
 
       {post.authorId === user.id ? (
-        <section className="mt-6 px-4">
+        <section className="mt-6 px-4 md:px-0">
           <form action={setReshareAction}>
             <input type="hidden" name="postId" value={post.id} />
             <input type="hidden" name="allow" value={post.allowReshare ? "0" : "1"} />
@@ -97,12 +112,8 @@ export default async function PostPage({
         </section>
       ) : null}
 
-      <div className="mt-6 px-4" id="report">
-        <ReportForm
-          targetType={isVideoKind(post.kind) ? "video" : "post"}
-          targetId={post.id}
-          returnTo={`/post/${post.id}`}
-        />
+      <div className="mt-6 scroll-mt-20 px-4 md:px-0" id="report">
+        <ReportForm targetType={isVideoKind(post.kind) ? "video" : "post"} targetId={post.id} returnTo={`/post/${post.id}`} />
       </div>
     </div>
   );

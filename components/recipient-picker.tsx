@@ -1,71 +1,70 @@
+import { Layers, UserRound, Users } from "lucide-react";
+import { Avatar, AvatarStack } from "@/components/avatar";
 import type { User } from "@/lib/types";
 
 type Group = { id: number; name: string; members: User[] };
 type List = { id: number; name: string; members: User[] };
 
-export function RecipientPicker({
-  friends,
-  groups,
-  lists,
-}: {
-  friends: User[];
-  groups: Group[];
-  lists: List[];
-}) {
+/** Server-rendered recipient picker for Create and the no-JS share page. Same rules as the share sheet. */
+export function RecipientPicker({ friends, groups, lists }: { friends: User[]; groups: Group[]; lists: List[] }) {
   return (
     <div className="grid gap-5">
-      <p className="text-sm text-muted">
-        Sharing puts this on their timeline. It does not open a message thread. Nothing here is delivered because of a recommendation.
-      </p>
-      <label className="flex items-start gap-3 border border-pine bg-card p-3">
-        <input className="mt-1" type="checkbox" name="self" />
-        <span>
-          <span className="block font-medium">My own timeline</span>
-          <span className="text-sm text-muted">You will see it there. No one else will, unless you also choose them.</span>
+      <label className="pick flex min-h-[64px] items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-deep text-white">
+          <UserRound className="h-5 w-5" aria-hidden />
         </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-semibold">My own timeline</span>
+          <span className="block text-[12.5px] text-ink-3">Only you see it, unless you also pick people.</span>
+        </span>
+        <input type="checkbox" name="self" />
       </label>
-      <fieldset className="grid gap-2">
-        <legend className="kicker mb-2">Friends</legend>
-        {friends.length === 0 ? <p className="text-sm text-muted">No friends yet.</p> : null}
-        {friends.map((friend) => (
-          <label key={friend.id} className="flex items-center gap-3 border border-rule bg-card px-3 py-2 text-sm">
-            <input type="checkbox" name="friend" value={friend.id} />
-            <span>
-              {friend.displayName} <span className="text-muted">@{friend.username}</span>
-            </span>
-          </label>
-        ))}
+
+      <fieldset>
+        <legend className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-ink-3">Friends</legend>
+        {friends.length === 0 ? <p className="text-sm text-ink-3">No friends yet.</p> : null}
+        <div className="flex flex-wrap gap-2">
+          {friends.map((friend) => (
+            <label key={friend.id} className="pick chip min-h-[44px] cursor-pointer pl-1.5 pr-3.5">
+              <input type="checkbox" name="friend" value={friend.id} className="sr-only" />
+              <Avatar initials={friend.initials} color={friend.avatarColor} name={friend.displayName} size="xs" />
+              <span className="text-ink">{friend.displayName}</span>
+            </label>
+          ))}
+        </div>
       </fieldset>
-      <fieldset className="grid gap-2">
-        <legend className="kicker mb-2">Friend groups</legend>
-        {groups.length === 0 ? <p className="text-sm text-muted">No groups yet. Make one from Friends.</p> : null}
-        {groups.map((group) => (
-          <label key={group.id} className="flex items-start gap-3 border border-rule bg-card px-3 py-2 text-sm">
-            <input className="mt-1" type="checkbox" name="group" value={group.id} />
-            <span>
-              <span className="block font-medium">{group.name}</span>
-              <span className="text-muted">
-                {group.members.length ? group.members.map((member) => member.displayName).join(", ") : "Empty group"}
+
+      {groups.length || lists.length ? (
+        <fieldset className="grid gap-2">
+          <legend className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-ink-3">Groups and lists</legend>
+          {groups.map((group) => (
+            <label key={`g${group.id}`} className="pick flex min-h-[56px] items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2.5">
+              <input type="checkbox" name="group" value={group.id} />
+              <Users className="h-4 w-4 text-ink-3" aria-hidden />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14.5px] font-semibold">{group.name}</span>
+                <span className="block truncate text-[12.5px] text-ink-3">
+                  {group.members.length ? group.members.map((member) => member.displayName).join(", ") : "Empty group"}
+                </span>
               </span>
-            </span>
-          </label>
-        ))}
-      </fieldset>
-      <fieldset className="grid gap-2">
-        <legend className="kicker mb-2">Custom lists</legend>
-        {lists.length === 0 ? <p className="text-sm text-muted">No lists yet. Lists are only for sharing.</p> : null}
-        {lists.map((list) => (
-          <label key={list.id} className="flex items-start gap-3 border border-rule bg-card px-3 py-2 text-sm">
-            <input className="mt-1" type="checkbox" name="list" value={list.id} />
-            <span>
-              <span className="block font-medium">{list.name}</span>
-              <span className="text-muted">
-                {list.members.length ? list.members.map((member) => member.displayName).join(", ") : "Empty list"}
+              <AvatarStack people={group.members} size="xs" />
+            </label>
+          ))}
+          {lists.map((list) => (
+            <label key={`l${list.id}`} className="pick flex min-h-[56px] items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2.5">
+              <input type="checkbox" name="list" value={list.id} />
+              <Layers className="h-4 w-4 text-ink-3" aria-hidden />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14.5px] font-semibold">{list.name}</span>
+                <span className="block truncate text-[12.5px] text-ink-3">
+                  {list.members.length ? list.members.map((member) => member.displayName).join(", ") : "Empty list"}
+                </span>
               </span>
-            </span>
-          </label>
-        ))}
-      </fieldset>
+              <AvatarStack people={list.members} size="xs" />
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
     </div>
   );
 }

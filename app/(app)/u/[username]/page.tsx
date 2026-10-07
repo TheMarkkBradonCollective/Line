@@ -5,9 +5,9 @@ export default async function UserProfilePage({
   searchParams,
 }: {
   params: Promise<{ username: string }>;
-  searchParams: Promise<{ notice?: string; error?: string }>;
+  searchParams: Promise<{ notice?: string; error?: string; tab?: string }>;
 }) {
   const { username } = await params;
   const query = await searchParams;
-  return <ProfileView username={username} notice={query.notice} error={query.error} />;
+  return <ProfileView username={username} notice={query.notice} error={query.error} tab={query.tab} />;
 }

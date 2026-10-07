@@ -51,9 +51,9 @@ export default async function StaffPage({
 
   if (grants.length === 0) {
     return (
-      <div className="mx-auto max-w-2xl">
+      <div className="px-4 pt-5 md:px-0 md:pt-6">
         <p className="kicker">Staff</p>
-        <h1 className="mt-1 font-serif text-4xl">This desk is closed.</h1>
+        <h1 className="mt-1 page-title">This desk is closed.</h1>
         <p className="mt-2 text-sm text-muted">
           {ROLE_LABELS[user.role as Role] ?? user.role} is a label. You have no staff permissions, so none of the tools open.
         </p>
@@ -71,10 +71,10 @@ export default async function StaffPage({
   const lookedUp = has("view_reported_content") && lookupId ? getPost(db, lookupId) : null;
 
   return (
-    <div className="mx-auto grid max-w-3xl gap-8">
+    <div className="grid gap-8 px-4 pb-6 pt-5 md:px-0 md:pt-6">
       <div>
         <p className="kicker">Staff</p>
-        <h1 className="mt-1 font-serif text-4xl">Desk</h1>
+        <h1 className="mt-1 page-title">Desk</h1>
         <p className="mt-2 text-sm">
           Signed in as {user.displayName}. The label on the account is {ROLE_LABELS[user.role as Role] ?? user.role}. Tools below open only where a permission is granted.
         </p>
@@ -87,7 +87,7 @@ export default async function StaffPage({
       </div>
 
       <section>
-        <h2 className="font-serif text-2xl">Grants</h2>
+        <h2 className="font-display text-xl font-bold tracking-tight">Grants</h2>
         <ul className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
           {PERMISSIONS.map((permission) => (
             <li key={permission} className={has(permission) ? "" : "text-muted"}>
@@ -100,14 +100,14 @@ export default async function StaffPage({
 
       {has("view_user_account") ? (
         <section className="grid gap-3">
-          <h2 className="font-serif text-2xl">Accounts</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight">Accounts</h2>
           <form className="flex gap-2" action="/staff">
             <input className="field" name="q" defaultValue={query.q || ""} placeholder="Name or username" aria-label="Search accounts" />
             <Button type="submit" variant="outline">Search</Button>
           </form>
           <ul className="grid gap-2">
             {accounts.map(({ user: account, permissions }) => (
-              <li key={account.id} className="border border-rule bg-card px-3 py-3 text-sm">
+              <li key={account.id} className="rounded-2xl border border-line/70 bg-surface px-3 py-3 text-sm">
                 <p className="font-medium">
                   {account.displayName} <span className="font-normal text-muted">@{account.username}</span>
                 </p>
@@ -142,7 +142,7 @@ export default async function StaffPage({
 
       {has("view_reported_content") ? (
         <section className="grid gap-3">
-          <h2 className="font-serif text-2xl">Reported content</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight">Reported content</h2>
           <p className="text-sm text-muted">Looking up a post does not put it on your timeline.</p>
           <form className="flex gap-2" action="/staff">
             <input className="field" name="post" placeholder="Post id" aria-label="Post id" />
@@ -150,7 +150,7 @@ export default async function StaffPage({
           </form>
           {query.post && !lookedUp ? <p className="text-sm">No post with that id.</p> : null}
           {lookedUp ? (
-            <article className="border border-rule bg-card p-3 text-sm">
+            <article className="rounded-2xl border border-line/70 bg-surface p-3 text-sm">
               <p className="kicker">Case content · post {lookedUp.id}</p>
               <p className="mt-2 whitespace-pre-wrap">{lookedUp.body}</p>
               <p className="mt-2 text-muted">{lookedUp.hidden ? `Hidden. ${lookedUp.hiddenReason ?? ""}` : "Visible where it was shared or listed."}</p>
@@ -169,13 +169,13 @@ export default async function StaffPage({
 
       {queues.length ? (
         <section className="grid gap-3">
-          <h2 className="font-serif text-2xl">Report queue</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight">Report queue</h2>
           <p className="text-sm text-muted">Cases in queues your grants open. This is not a feed.</p>
           {reports.length === 0 ? <p className="text-sm">Nothing waiting in your queues.</p> : null}
           {reports.map((report) => {
             const post = report.targetType === "post" || report.targetType === "video" ? getPost(db, report.targetId) : null;
             return (
-              <article key={report.id} className="border border-rule bg-card p-3 text-sm">
+              <article key={report.id} className="rounded-2xl border border-line/70 bg-surface p-3 text-sm">
                 <p className="kicker">Case {report.id} · {report.queue} · {report.category}</p>
                 <h3 className="mt-1 font-medium">{report.targetLabel}</h3>
                 <p className="text-muted">Filed by {report.reporterName} · {formatWhen(report.createdAt)} · {report.targetType}</p>
@@ -215,10 +215,10 @@ export default async function StaffPage({
 
       {has("manage_support_tickets") ? (
         <section className="grid gap-3">
-          <h2 className="font-serif text-2xl">Tickets</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight">Tickets</h2>
           <p className="text-sm text-muted">A short list for support. Not a full ticket CRM, and not a timeline.</p>
           {tickets.map((ticket) => (
-            <article key={ticket.id} className="border border-rule bg-card p-3 text-sm">
+            <article key={ticket.id} className="rounded-2xl border border-line/70 bg-surface p-3 text-sm">
               <p className="font-medium">{ticket.subject}</p>
               <p className="text-muted">{ticket.user_name} @{ticket.username} · {ticket.status} · {formatWhen(ticket.created_at)}</p>
               <p className="mt-2">{ticket.body}</p>
@@ -239,10 +239,10 @@ export default async function StaffPage({
 
       {has("manage_staff") ? (
         <section className="grid gap-3">
-          <h2 className="font-serif text-2xl">Staff directory</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight">Staff directory</h2>
           <ul className="grid gap-2 text-sm">
             {staff.map(({ user: member, permissions }) => (
-              <li key={member.id} className="border border-rule bg-card px-3 py-2">
+              <li key={member.id} className="rounded-2xl border border-line/70 bg-surface px-3 py-2">
                 <p className="font-medium">{member.displayName} · {ROLE_LABELS[member.role as Role] ?? member.role}</p>
                 <p className="text-muted">{permissions.join(", ") || "No grants"}</p>
                 {has("modify_roles") ? (
@@ -286,7 +286,7 @@ export default async function StaffPage({
 
       {has("create_staff_accounts") ? (
         <section className="grid gap-3">
-          <h2 className="font-serif text-2xl">Create a staff account</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight">Create a staff account</h2>
           <CreateStaffForm actorPermissions={grants} />
         </section>
       ) : null}
@@ -304,7 +304,7 @@ export default async function StaffPage({
 
       {has("manage_security_settings") ? (
         <section className="grid gap-3">
-          <h2 className="font-serif text-2xl">Security</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight">Security</h2>
           <p className="text-sm text-muted">
             Password, email, and SMS sign-in are not connected. Demo login stays a person picker. Staff actions always ask for a reason ({getSetting(db, "staff_reason_required") === "1" ? "on" : "off"}).
           </p>
@@ -314,8 +314,8 @@ export default async function StaffPage({
 
       {has("manage_financial_settings") ? (
         <section className="grid gap-3">
-          <h2 className="font-serif text-2xl">Financial</h2>
-          <p className="border border-rule bg-[#f6f6f6] px-3 py-2 text-sm">
+          <h2 className="font-display text-xl font-bold tracking-tight">Financial</h2>
+          <p className="border border-rule bg-surface-2 px-3 py-2 text-sm">
             Payments are not connected. Nothing here charges a card, pays a creator, or opens an invoice. The note is stored so the permission can be tested.
           </p>
           <SettingForm settingKey="billing_note" label="Billing note" value={getSetting(db, "billing_note")} />
@@ -324,7 +324,7 @@ export default async function StaffPage({
 
       {has("access_emergency_controls") ? (
         <section className="grid gap-3">
-          <h2 className="font-serif text-2xl">Emergency</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight">Emergency</h2>
           <p className="text-sm">Sharing is {getSetting(db, "sharing_paused") === "1" ? "paused" : "open"}.</p>
           <SettingForm
             settingKey="sharing_paused"
@@ -336,7 +336,7 @@ export default async function StaffPage({
 
       {has("platform_ownership") ? (
         <section className="grid gap-3">
-          <h2 className="font-serif text-2xl">Ownership</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight">Ownership</h2>
           <p className="text-sm">
             This panel exists only with the platform ownership grant. Administrator does not have it. Founder is the ownership seat, not a normal staff account.
           </p>
@@ -346,7 +346,7 @@ export default async function StaffPage({
 
       {has("access_audit_logs") ? (
         <section className="grid gap-2">
-          <h2 className="font-serif text-2xl">Audit log</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight">Audit log</h2>
           <p className="text-sm text-muted">Append-only. Staff cannot erase or rewrite their own history. There is no delete control.</p>
           <div className="overflow-x-auto border border-rule">
             <table className="w-full min-w-[720px] border-collapse text-left text-xs">
@@ -391,7 +391,7 @@ function SettingBlock({
 }) {
   return (
     <section className="grid gap-3">
-      <h2 className="font-serif text-2xl">{title}</h2>
+      <h2 className="font-display text-xl font-bold tracking-tight">{title}</h2>
       <p className="text-sm text-muted">{note}</p>
       {fields.map(([key, label, value]) => (
         <SettingForm key={key} settingKey={key} label={label} value={value} />
@@ -402,7 +402,7 @@ function SettingBlock({
 
 function SettingForm({ settingKey, label, value }: { settingKey: string; label: string; value: string }) {
   return (
-    <form action={settingAction} className="grid gap-2 border border-rule bg-card p-3 text-sm">
+    <form action={settingAction} className="grid gap-2 rounded-2xl border border-line/70 bg-surface p-3 text-sm">
       <input type="hidden" name="key" value={settingKey} />
       <label className="grid gap-1">
         {label}

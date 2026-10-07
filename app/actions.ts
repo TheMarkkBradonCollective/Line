@@ -64,6 +64,14 @@ function safePath(value: FormDataEntryValue | null, fallback: string) {
   return path;
 }
 
+const FRIEND_TABS = new Set(["friends", "requests", "groups", "privacy"]);
+
+/** Send Friends actions back to the tab they came from. */
+function friendsPath(formData: FormData) {
+  const tab = String(formData.get("tab") || "");
+  return FRIEND_TABS.has(tab) && tab !== "friends" ? `/friends?tab=${tab}` : "/friends";
+}
+
 function isNextRedirect(error: unknown) {
   return (
     typeof error === "object" &&
@@ -274,7 +282,7 @@ export async function acceptFriendAction(formData: FormData) {
   await run("/friends", async (user) => {
     acceptFriend(getDb(), user.id, Number(formData.get("requestId")));
     revalidatePath("/friends");
-    redirect(withQuery("/friends", "notice", "You are friends. They still cannot put something on your timeline unless they share it."));
+    redirect(withQuery(friendsPath(formData), "notice", "You are friends. They still cannot put something on your timeline unless they share it."));
   });
 }
 
@@ -282,7 +290,7 @@ export async function declineFriendAction(formData: FormData) {
   await run("/friends", async (user) => {
     declineFriend(getDb(), user.id, Number(formData.get("requestId")));
     revalidatePath("/friends");
-    redirect(withQuery("/friends", "notice", "Request closed."));
+    redirect(withQuery(friendsPath(formData), "notice", "Request closed."));
   });
 }
 
@@ -290,7 +298,7 @@ export async function removeFriendAction(formData: FormData) {
   await run("/friends", async (user) => {
     removeFriend(getDb(), user.id, Number(formData.get("userId")));
     revalidatePath("/friends");
-    redirect(withQuery("/friends", "notice", "Removed from your friends."));
+    redirect(withQuery(friendsPath(formData), "notice", "Removed from your friends."));
   });
 }
 
@@ -299,14 +307,14 @@ export async function blockAction(formData: FormData) {
   await run(returnTo, async (user) => {
     blockUser(getDb(), user.id, Number(formData.get("userId")));
     revalidatePath("/friends");
-    redirect(withQuery("/friends", "notice", "Blocked. They cannot share with you or add you."));
+    redirect(withQuery(friendsPath(formData), "notice", "Blocked. They cannot share with you or add you."));
   });
 }
 
 export async function unblockAction(formData: FormData) {
   await run("/friends", async (user) => {
     unblockUser(getDb(), user.id, Number(formData.get("userId")));
-    redirect(withQuery("/friends", "notice", "Block removed. Sharing still follows your share settings."));
+    redirect(withQuery(friendsPath(formData), "notice", "Block removed. Sharing still follows your share settings."));
   });
 }
 
@@ -319,28 +327,28 @@ export async function createGroupAction(formData: FormData) {
       ids(formData, "member"),
       formData.get("allows_inbound") === "on",
     );
-    redirect(withQuery("/friends", "notice", "Group saved. Use it when you share."));
+    redirect(withQuery(friendsPath(formData), "notice", "Group saved. Use it when you share."));
   });
 }
 
 export async function deleteGroupAction(formData: FormData) {
   await run("/friends", async (user) => {
     deleteGroup(getDb(), user.id, Number(formData.get("groupId")));
-    redirect(withQuery("/friends", "notice", "Group removed. Past shares stay where they were sent."));
+    redirect(withQuery(friendsPath(formData), "notice", "Group removed. Past shares stay where they were sent."));
   });
 }
 
 export async function createListAction(formData: FormData) {
   await run("/friends", async (user) => {
     createList(getDb(), user.id, String(formData.get("name") || ""), ids(formData, "member"));
-    redirect(withQuery("/friends", "notice", "List saved for sharing."));
+    redirect(withQuery(friendsPath(formData), "notice", "List saved for sharing."));
   });
 }
 
 export async function deleteListAction(formData: FormData) {
   await run("/friends", async (user) => {
     deleteList(getDb(), user.id, Number(formData.get("listId")));
-    redirect(withQuery("/friends", "notice", "List removed."));
+    redirect(withQuery(friendsPath(formData), "notice", "List removed."));
   });
 }
 
@@ -368,7 +376,7 @@ export async function updatePrivacyAction(formData: FormData) {
       allowListIds: ids(formData, "allow"),
       inboundGroupIds: ids(formData, "inbound_group"),
     });
-    redirect(withQuery("/friends", "notice", "Privacy saved. People outside those rules cannot put posts on your timeline."));
+    redirect(withQuery(friendsPath(formData), "notice", "Privacy saved. People outside those rules cannot put posts on your timeline."));
   });
 }
 
