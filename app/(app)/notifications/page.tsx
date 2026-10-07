@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { BellOff, CheckCheck, Forward, Play, Repeat2, Send } from "lucide-react";
 import { markAllReadAction } from "@/app/actions";
@@ -56,9 +55,10 @@ function Row({ item }: { item: Item }) {
   );
   const cls = cn("relative flex min-h-[72px] items-center gap-3 py-3 pl-5 pr-4", !item.read && "bg-brand-soft/50");
   return item.post_id ? (
-    <Link href={`/notifications/${item.id}/open`} className={cn(cls, "text-ink hover:bg-surface-2")}>
+    // A plain link on purpose: opening marks the alert read, so it must never be prefetched.
+    <a href={`/notifications/${item.id}/open`} className={cn(cls, "text-ink hover:bg-surface-2")}>
       {body}
-    </Link>
+    </a>
   ) : (
     <div className={cls}>{body}</div>
   );
