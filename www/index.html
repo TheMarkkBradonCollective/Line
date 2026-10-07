@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#00BF8F" />
+    <title>LINE</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        background: #ffffff;
+        color: #2f2f2f;
+        font-family: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
+      }
+      header {
+        background: #00bf8f;
+        color: #ffffff;
+        padding: calc(0.9rem + env(safe-area-inset-top)) 1.25rem 0.9rem;
+      }
+      header p {
+        margin: 0;
+        font-size: 2rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+      }
+      main {
+        max-width: 28rem;
+        margin: 0 auto;
+        padding: 1.5rem 1.25rem calc(2rem + env(safe-area-inset-bottom));
+      }
+      h1 { font-weight: 800; font-size: 2.2rem; margin: 0; color: #2f2f2f; }
+      .rule { border: 0; border-top: 1px solid #e4e4e4; margin: 1.25rem 0; }
+      form { display: grid; gap: 0.75rem; }
+      input {
+        font: inherit;
+        padding: 0.85rem 0.9rem;
+        border: 1px solid #e4e4e4;
+        border-radius: 14px;
+        background: #ffffff;
+        color: #2f2f2f;
+      }
+      button {
+        font: inherit;
+        font-weight: 800;
+        background: #00bf8f;
+        color: #ffffff;
+        border: 0;
+        border-radius: 999px;
+        padding: 0.85rem 1rem;
+        cursor: pointer;
+      }
+      .note { color: #6b6b6b; font-size: 0.92rem; }
+    </style>
+  </head>
+  <body>
+    <header><p>LINE</p></header>
+    <main>
+      <h1>Sent, not served.</h1>
+      <p>
+        This debug build wraps the LINE website. Timelines, sharing, and the
+        staff desk live on the Next.js server, which holds the SQLite database.
+      </p>
+      <hr class="rule" />
+      <form id="open">
+        <label for="url">LINE server address</label>
+        <input id="url" name="url" inputmode="url" placeholder="http://10.0.2.2:43921" required />
+        <button type="submit">Open LINE</button>
+      </form>
+      <p class="note">
+        On an emulator, <code>10.0.2.2</code> is the computer running
+        <code>npm run dev</code>. To skip this page, rebuild with
+        <code>CAPACITOR_SERVER_URL</code> set. Video upload, push, and payments
+        are not in this build.
+      </p>
+    </main>
+    <script>
+      var input = document.getElementById("url");
+      var saved = localStorage.getItem("line-server");
+      if (saved) input.value = saved;
+      document.getElementById("open").addEventListener("submit", function (event) {
+        event.preventDefault();
+        var url = input.value.trim().replace(/\/$/, "");
+        if (!/^https?:\/\//.test(url)) {
+          url = "http://" + url;
+        }
+        localStorage.setItem("line-server", url);
+        window.location.href = url;
+      });
+    </script>
+  </body>
+</html>
