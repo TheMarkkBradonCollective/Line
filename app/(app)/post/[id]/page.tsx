@@ -27,7 +27,7 @@ export default async function PostPage({
   const query = await searchParams;
   const db = getDb();
   const post = getPost(db, Number(id));
-  if (!post || !canViewPost(db, user, post)) notFound();
+  if (!post || !canViewPost(db, user, post, { allowStaff: true })) notFound();
   const author = mustUser(db, post.authorId);
   const history = shareHistory(db, post.id);
   const onTimeline = hasShareTo(db, post.id, user.id);

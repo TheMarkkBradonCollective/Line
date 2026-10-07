@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { ROLE_TEMPLATES, type Role } from "./permissions";
 import {
+  addComment,
   createPost,
   createTicket,
   requestFriend,
@@ -31,8 +32,8 @@ function insertUser(
   const info = db
     .prepare(
       `INSERT INTO users
-        (username, display_name, bio, avatar_color, initials, role, who_can_share, who_can_add, who_can_reshare, default_visibility, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'private', ?)`,
+        (username, display_name, bio, avatar_color, initials, role, who_can_share, who_can_add, who_can_reshare, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.username,
@@ -65,7 +66,9 @@ function user(db: Database.Database, username: string): User {
     who_can_share: User["whoCanShare"];
     who_can_add: User["whoCanAdd"];
     who_can_reshare: User["whoCanReshare"];
-    default_visibility: "private" | "public";
+    location: string;
+    work: string;
+    education: string;
     restricted: number;
     suspended: number;
     created_at: string;
@@ -81,7 +84,9 @@ function user(db: Database.Database, username: string): User {
     whoCanShare: row.who_can_share,
     whoCanAdd: row.who_can_add,
     whoCanReshare: row.who_can_reshare,
-    defaultVisibility: row.default_visibility,
+    location: row.location,
+    work: row.work,
+    education: row.education,
     restricted: row.restricted,
     suspended: row.suspended,
     createdAt: row.created_at,
@@ -104,6 +109,12 @@ function mustShare(
     throw new Error(`Seed share failed. ${why}`);
   }
   return result;
+}
+
+function getPostId(db: Database.Database, seedKey: string) {
+  const row = db.prepare("SELECT id FROM posts WHERE seed_key = ?").get(seedKey) as { id: number } | undefined;
+  if (!row) throw new Error(`Seed post ${seedKey} is missing.`);
+  return row.id;
 }
 
 /** Demo world. Called only on an empty database. */
@@ -244,6 +255,20 @@ export function seed(db: Database.Database) {
     role: "founder",
   });
 
+  const about: [string, string, string, string][] = [
+    ["marcus", "Portland, Oregon", "Bike mechanic at Hale & Sons", "Portland Community College"],
+    ["jordan", "Portland, Oregon", "Line cook, Saturday kitchen", "Le Cordon Bleu"],
+    ["alex", "Seattle, Washington", "Product designer", "University of Washington"],
+    ["sam", "Portland, Oregon", "Baker at Crumb Street", ""],
+    ["riley", "Tacoma, Washington", "Runs the north hall market stall", ""],
+    ["noah", "Portland, Oregon", "Skate coach", "Reed College"],
+    ["mina", "Seattle, Washington", "Photographer", "Cornish College of the Arts"],
+    ["theo", "Bend, Oregon", "River guide", "Oregon State University"],
+    ["priya", "Portland, Oregon", "Pastry chef", "Portland State University"],
+  ];
+  const setAbout = db.prepare("UPDATE users SET location = ?, work = ?, education = ? WHERE username = ?");
+  for (const [username, location, work, education] of about) setAbout.run(location, work, education, username);
+
   const marcus = user(db, "marcus");
   const jordan = user(db, "jordan");
   const alex = user(db, "alex");
@@ -339,6 +364,10 @@ export function seed(db: Database.Database) {
     body: "Brought extra peaches 🍑 Saturday kitchen — Alex and Sam — and not Marcus.",
     mediaLabel: "Kitchen table, late",
     mediaTone: "#ff8fab,#fb6f92",
+    photos: [
+      { label: "Kitchen table, late", tone: "#ff8fab,#fb6f92" },
+      { label: "Peaches in the bowl", tone: "#ffb703,#fb6f92" },
+    ],
     allowReshare: true,
     seedKey: "peaches",
     createdAt: at(20),
@@ -446,6 +475,11 @@ export function seed(db: Database.Database) {
     body: "Cardamom buns, still warm. Sam and Alex, come take one before they are gone.",
     mediaLabel: "Tray of cardamom buns",
     mediaTone: "#f4a261,#e76f51",
+    photos: [
+      { label: "Tray of cardamom buns", tone: "#f4a261,#e76f51" },
+      { label: "Buns on the rack", tone: "#e09f3e,#9c6644" },
+      { label: "The last one", tone: "#ffb703,#e76f51" },
+    ],
     allowReshare: true,
     seedKey: "buns",
     createdAt: at(32),
@@ -461,7 +495,7 @@ export function seed(db: Database.Database) {
   });
 
   const dusk = createPost(db, mina.id, {
-    kind: "short",
+    kind: "reel",
     body: "One loop around the block until the light hits 🌇 For Alex.",
     mediaLabel: "Side street at dusk",
     mediaTone: "#7b2cbf,#c77dff",
@@ -509,11 +543,34 @@ export function seed(db: Database.Database) {
   });
 
   // A few more things Marcus made, each sent to specific friends, so his profile grid has some life.
-  const marcusPosts: { key: string; kind: "photo" | "short" | "text"; body: string; label?: string; tone?: string; to: User[]; minute: number }[] = [
-    { key: "bridge", kind: "photo", body: "Bridge lights came on early tonight.", label: "Bridge at blue hour", tone: "#48cae4,#023e8a", to: [theo, jordan], minute: 42 },
+  type SeedPost = {
+    key: string;
+    kind: "photo" | "video" | "reel" | "text";
+    body: string;
+    label?: string;
+    tone?: string;
+    photos?: { label: string; tone: string }[];
+    to: User[];
+    minute: number;
+  };
+  const marcusPosts: SeedPost[] = [
+    {
+      key: "bridge",
+      kind: "photo",
+      body: "Bridge lights came on early tonight.",
+      label: "Bridge at blue hour",
+      tone: "#48cae4,#023e8a",
+      photos: [
+        { label: "Bridge at blue hour", tone: "#48cae4,#023e8a" },
+        { label: "River path after rain", tone: "#48cae4,#0077b6" },
+      ],
+      to: [theo, jordan],
+      minute: 42,
+    },
     { key: "coffee", kind: "photo", body: "Market coffee before the stalls open ☕", label: "Morning market coffee", tone: "#ffb703,#e85d04", to: [alex], minute: 44 },
-    { key: "porch", kind: "short", body: "Porch rain, six seconds, on repeat.", label: "Porch in the rain", tone: "#2ec4b6,#1a936f", to: [sam], minute: 46 },
+    { key: "porch", kind: "reel", body: "Porch rain, six seconds, on repeat.", label: "Porch in the rain", tone: "#2ec4b6,#1a936f", to: [sam], minute: 46 },
     { key: "toast", kind: "text", body: "To whoever oiled the side gate: you are a hero.", tone: "#00bf8f,#007a5c", to: [jordan], minute: 48 },
+    { key: "ride", kind: "video", body: "Rode the river loop with the new wheel. Two minutes of gravel and geese.", label: "River loop by bike", tone: "#00bf8f,#24527a", to: [jordan, theo], minute: 56 },
   ];
   for (const item of marcusPosts) {
     const id = createPost(db, marcus.id, {
@@ -521,6 +578,7 @@ export function seed(db: Database.Database) {
       body: item.body,
       mediaLabel: item.label ?? null,
       mediaTone: item.tone ?? null,
+      photos: item.photos ?? null,
       allowReshare: true,
       seedKey: item.key,
       createdAt: at(item.minute),
@@ -534,6 +592,39 @@ export function seed(db: Database.Database) {
     for (const person of item.to) {
       db.prepare("INSERT INTO reactions (user_id, post_id, kind, created_at) VALUES (?, ?, 'like', ?)").run(person.id, id, at(item.minute + 2));
     }
+  }
+
+  // Things Jordan and Theo sent Marcus, so their profiles show Marcus a partial set.
+  const sentToMarcus: (SeedPost & { author: User })[] = [
+    { author: jordan, key: "sauce", kind: "video", body: "Sunday sauce, start to finish. Marcus, this is the one you asked about 🍅", label: "Sauce on the stove", tone: "#e05a33,#9c2c13", to: [marcus], minute: 52 },
+    { author: jordan, key: "flip", kind: "reel", body: "Pancake flip, take nine. Finally.", label: "Pancake flip", tone: "#ffb703,#e05a33", to: [marcus, alex], minute: 58 },
+    { author: jordan, key: "knife", kind: "text", body: "Sharpened every knife in the kitchen tonight. Bring yours Saturday if you want.", to: [marcus], minute: 60 },
+    { author: theo, key: "rapids", kind: "reel", body: "Class III on the lower stretch. Hold on.", label: "Rapids, lower stretch", tone: "#2ec4b6,#0077b6", to: [marcus, jordan], minute: 62 },
+    { author: theo, key: "camp", kind: "photo", body: "Camp at the bend, before the rain came in.", label: "Camp at the bend", tone: "#1a936f,#24527a", photos: [
+      { label: "Camp at the bend", tone: "#1a936f,#24527a" },
+      { label: "Creek under the bridge", tone: "#2ec4b6,#1a936f" },
+    ], to: [marcus], minute: 64 },
+    { author: mina, key: "lanterns", kind: "photo", body: "Night market lanterns. Alex, you would have loved the noise.", label: "Night market lanterns", tone: "#ff4f81,#7b2cbf", to: [alex], minute: 54 },
+  ];
+  const seeded: Record<string, number> = {};
+  for (const item of sentToMarcus) {
+    const id = createPost(db, item.author.id, {
+      kind: item.kind,
+      body: item.body,
+      mediaLabel: item.label ?? null,
+      mediaTone: item.tone ?? null,
+      photos: item.photos ?? null,
+      allowReshare: true,
+      seedKey: item.key,
+      createdAt: at(item.minute),
+    });
+    seeded[item.key] = id;
+    mustShare(db, {
+      postId: id,
+      fromUserId: item.author.id,
+      recipients: item.to.map((person) => ({ userId: person.id, shareKind: "direct" as const })),
+      createdAt: at(item.minute + 1),
+    });
   }
 
   // A three-person share chain: Mina → Alex → Jordan → Marcus.
@@ -578,9 +669,8 @@ export function seed(db: Database.Database) {
     createdAt: at(72),
   });
 
-  const like = db.prepare(
-    "INSERT INTO reactions (user_id, post_id, kind, created_at) VALUES (?, ?, 'like', ?)",
-  );
+  const reactions = db.prepare("INSERT OR REPLACE INTO reactions (user_id, post_id, kind, created_at) VALUES (?, ?, ?, ?)");
+  const like = { run: (userId: number, postId: number, when: string) => reactions.run(userId, postId, "like", when) };
   like.run(jordan.id, river, at(12));
   like.run(marcus.id, bread, at(7));
   like.run(alex.id, peaches, at(22));
@@ -605,6 +695,42 @@ export function seed(db: Database.Database) {
   like.run(noah.id, bowl, at(38));
   like.run(jordan.id, timer, at(26));
   like.run(alex.id, timer, at(27));
+  const react = (person: User, postId: number, kind: string, minute: number) => {
+    db.prepare("DELETE FROM reactions WHERE user_id = ? AND post_id = ?").run(person.id, postId);
+    reactions.run(person.id, postId, kind, at(minute));
+  };
+  react(mina, rooftop, "love", 69);
+  react(jordan, rooftop, "wow", 71);
+  react(marcus, rooftop, "love", 78);
+  react(marcus, buns, "love", 73);
+  react(marcus, bread, "haha", 7);
+  react(alex, peaches, "love", 22);
+  react(marcus, seeded.sauce, "love", 54);
+  react(marcus, seeded.flip, "haha", 59);
+  react(alex, seeded.flip, "haha", 60);
+  react(marcus, seeded.rapids, "wow", 63);
+  react(jordan, seeded.rapids, "like", 64);
+  react(marcus, seeded.camp, "like", 65);
+  react(theo, getPostId(db, "ride"), "love", 58);
+  react(jordan, getPostId(db, "ride"), "like", 59);
+
+  // Comments, with a reply or two. Each one is checked against the same access rule as everything else.
+  const comment = (person: User, postId: number, body: string, minute: number, parentId?: number) =>
+    addComment(db, person.id, postId, { body, parentId, createdAt: at(minute) });
+  const roof1 = comment(alex, rooftop, "Told you it was worth passing on.", 71);
+  comment(jordan, rooftop, "Four minutes of orange. Unreal.", 77, roof1);
+  comment(marcus, rooftop, "Thank you for sending this my way. That light!", 79);
+  comment(mina, rooftop, "Glad it made it all the way to you, Marcus.", 80);
+  const loaf = comment(marcus, bread, "Ten more minutes and I'm coming over.", 8);
+  comment(sam, bread, "Bring butter.", 9, loaf);
+  comment(jordan, bread, "Marcus sent me this. Save me a slice?", 42);
+  comment(jordan, river, "Walked it this morning. Puddles everywhere.", 13);
+  comment(marcus, river, "Told you. Boots next time.", 14);
+  comment(theo, getPostId(db, "bridge"), "Blue hour from the bridge never misses.", 44);
+  comment(marcus, seeded.sauce, "Saving this for Sunday.", 55);
+  comment(jordan, seeded.sauce, "Low heat. Don't rush it.", 56);
+  comment(alex, seeded.flip, "Take nine was worth it.", 61);
+  comment(jordan, getPostId(db, "ride"), "The geese are the best part.", 60);
 
   createReport(db, jordan.id, {
     targetType: "profile",

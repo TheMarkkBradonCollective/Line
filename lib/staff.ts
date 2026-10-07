@@ -443,8 +443,8 @@ export function createStaffAccount(
   const info = db
     .prepare(
       `INSERT INTO users
-        (username, display_name, bio, avatar_color, initials, role, who_can_share, who_can_add, who_can_reshare, default_visibility, created_at)
-       VALUES (?, ?, ?, '#24527a', ?, ?, 'friends', 'everyone', 'recipients', 'private', ?)`,
+        (username, display_name, bio, avatar_color, initials, role, who_can_share, who_can_add, who_can_reshare, created_at)
+       VALUES (?, ?, ?, '#24527a', ?, ?, 'friends', 'everyone', 'recipients', ?)`,
     )
     .run(
       username,

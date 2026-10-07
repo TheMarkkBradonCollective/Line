@@ -13,13 +13,18 @@ export type User = {
   whoCanShare: SharePolicy;
   whoCanAdd: AddPolicy;
   whoCanReshare: ResharePolicy;
-  defaultVisibility: "private" | "public";
+  location: string;
+  work: string;
+  education: string;
   restricted: number;
   suspended: number;
   createdAt: string;
 };
 
+/** short and long_video are older names. New posts are text, photo, video, or reel. */
 export type PostKind = "text" | "photo" | "video" | "short" | "long_video" | "reel";
+
+export type Frame = { label: string; tone: string };
 
 export type Post = {
   id: number;
@@ -28,6 +33,8 @@ export type Post = {
   body: string;
   mediaLabel: string | null;
   mediaTone: string | null;
+  /** Every frame of the post. Photo posts can have several; video and reels have one. */
+  frames: Frame[];
   allowReshare: number;
   hidden: number;
   hiddenReason: string | null;
@@ -46,7 +53,9 @@ export type UserRow = {
   who_can_share: SharePolicy;
   who_can_add: AddPolicy;
   who_can_reshare: ResharePolicy;
-  default_visibility: "private" | "public";
+  location?: string;
+  work?: string;
+  education?: string;
   restricted: number;
   suspended: number;
   created_at: string;
@@ -59,6 +68,7 @@ export type PostRow = {
   body: string;
   media_label: string | null;
   media_tone: string | null;
+  photos?: string | null;
   allow_reshare: number;
   hidden: number;
   hidden_reason: string | null;
@@ -78,7 +88,9 @@ export function mapUser(row: UserRow): User {
     whoCanShare: row.who_can_share,
     whoCanAdd: row.who_can_add,
     whoCanReshare: row.who_can_reshare,
-    defaultVisibility: row.default_visibility,
+    location: row.location ?? "",
+    work: row.work ?? "",
+    education: row.education ?? "",
     restricted: row.restricted,
     suspended: row.suspended,
     createdAt: row.created_at,
@@ -93,10 +105,24 @@ export function mapPost(row: PostRow): Post {
     body: row.body,
     mediaLabel: row.media_label,
     mediaTone: row.media_tone,
+    frames: framesOf(row),
     allowReshare: row.allow_reshare,
     hidden: row.hidden,
     hiddenReason: row.hidden_reason,
     seedKey: row.seed_key,
     createdAt: row.created_at,
   };
+}
+
+function framesOf(row: PostRow): Frame[] {
+  if (row.kind === "text") return [];
+  if (row.photos) {
+    try {
+      const parsed = JSON.parse(row.photos) as Frame[];
+      if (Array.isArray(parsed) && parsed.length) return parsed.filter((item) => item && item.label);
+    } catch {
+      // fall through to the single frame
+    }
+  }
+  return row.media_label ? [{ label: row.media_label, tone: row.media_tone ?? "#00bf8f,#009e78" }] : [];
 }
