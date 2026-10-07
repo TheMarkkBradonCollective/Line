@@ -27,7 +27,7 @@ function sceneOf(label: string) {
   if (text.includes("river") || text.includes("creek") || text.includes("rain") || text.includes("bridge")) return "water";
   if (text.includes("kitchen") || text.includes("peach") || text.includes("bun") || text.includes("table")) return "kitchen";
   if (text.includes("loaf") || text.includes("bread") || text.includes("cracked")) return "loaf";
-  if (text.includes("skate") || text.includes("bowl") || text.includes("street") || text.includes("dusk")) return "street";
+  if (text.includes("skate") || text.includes("bowl") || text.includes("street") || text.includes("dusk") || text.includes("rooftop") || text.includes("golden")) return "street";
   return "abstract";
 }
 

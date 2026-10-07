@@ -18,6 +18,8 @@ import {
   canViewPost,
   expandRecipients,
   getPost,
+  getSetting,
+  getUserById,
   getUserByUsername,
   markAllNotificationsRead,
   MEDIA_PLATES,
@@ -26,6 +28,7 @@ import {
   requestFriend,
   setAllowReshare,
   sharePost,
+  shareTargets,
   toggleLike,
   unblockUser,
   updatePrivacy,
@@ -167,6 +170,95 @@ export async function shareExistingAction(formData: FormData) {
     const note = expanded.errors.length ? ` ${expanded.errors.join(" ")}` : "";
     redirect(withQuery("/timeline", "notice", `${shareSummary(result.created.length, result.rejected)}${note}`));
   });
+}
+
+export type SheetPost = {
+  id: number;
+  kind: string;
+  body: string;
+  mediaLabel: string | null;
+  mediaTone: string | null;
+  authorName: string;
+};
+
+/** Data for the share sheet. Read-only. */
+export async function shareSheetAction(postId: number) {
+  const user = await getCurrentUser();
+  if (!user || user.suspended) throw new Error("Sign in to share.");
+  const db = getDb();
+  const post = getPost(db, Number(postId));
+  if (!post || !canViewPost(db, user, post) || post.hidden) throw new Error("That post is not available to share.");
+  const author = getUserById(db, post.authorId);
+  const targets = shareTargets(db, user, post);
+  const sheetPost: SheetPost = {
+    id: post.id,
+    kind: post.kind,
+    body: post.body,
+    mediaLabel: post.mediaLabel,
+    mediaTone: post.mediaTone,
+    authorName: author?.displayName ?? "Someone",
+  };
+  return { post: sheetPost, restricted: Boolean(user.restricted), paused: getSetting(db, "sharing_paused") === "1", ...targets };
+}
+
+export type SheetResult = {
+  ok: boolean;
+  delivered: { userId: number; name: string; initials: string; color: string }[];
+  rejected: { name: string; reason: string }[];
+  message: string;
+};
+
+/** Share from the sheet. Same rules as shareExistingAction, but it answers instead of redirecting. */
+export async function shareFromSheetAction(input: {
+  postId: number;
+  self: boolean;
+  friendIds: number[];
+  groupIds: number[];
+  listIds: number[];
+  note: string;
+}): Promise<SheetResult> {
+  const user = await getCurrentUser();
+  if (!user || user.suspended) return { ok: false, delivered: [], rejected: [], message: "Sign in to share." };
+  const db = getDb();
+  const clean = (values: unknown) =>
+    (Array.isArray(values) ? values : []).map(Number).filter((value) => Number.isInteger(value) && value > 0);
+  const expanded = expandRecipients(db, user.id, {
+    self: Boolean(input.self),
+    friendIds: clean(input.friendIds),
+    groupIds: clean(input.groupIds),
+    listIds: clean(input.listIds),
+  });
+  if (!expanded.recipients.length) {
+    return { ok: false, delivered: [], rejected: [], message: "Pick your timeline, a friend, a group, or a list." };
+  }
+  try {
+    const result = sharePost(db, {
+      postId: Number(input.postId),
+      fromUserId: user.id,
+      recipients: expanded.recipients,
+      note: String(input.note || ""),
+    });
+    revalidatePath("/timeline");
+    revalidatePath("/notifications");
+    const delivered = result.created.map((item) => {
+      const person = getUserById(db, item.userId);
+      return {
+        userId: item.userId,
+        name: item.userId === user.id ? "Your timeline" : (person?.displayName ?? "Someone"),
+        initials: person?.initials ?? "?",
+        color: person?.avatarColor ?? "#00bf8f",
+      };
+    });
+    const extra = expanded.errors.map((reason) => ({ name: "Note", reason }));
+    return {
+      ok: delivered.length > 0,
+      delivered,
+      rejected: [...result.rejected.map((item) => ({ name: item.name, reason: item.reason })), ...extra],
+      message: shareSummary(result.created.length, result.rejected),
+    };
+  } catch (error) {
+    return { ok: false, delivered: [], rejected: [], message: error instanceof Error ? error.message : "Nothing was shared." };
+  }
 }
 
 export async function requestFriendAction(formData: FormData) {

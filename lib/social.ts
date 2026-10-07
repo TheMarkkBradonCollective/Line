@@ -23,6 +23,8 @@ export type TimelineItem = {
   likeCount: number;
   shareCount: number;
   liked: boolean;
+  /** Who carried the post here, in order: creator first, the person who sent it to you last. */
+  chain: User[];
 };
 
 export type ShareRejection = { userId: number; name: string; reason: string };
@@ -446,6 +448,28 @@ function provenance(db: Database.Database, shareId: number, parentId: number | n
   return `Originally created by ${author.displayName}. Shared with you by ${sender.displayName}.${via}`;
 }
 
+/** People who carried a share, creator first and the sender last. Display only. */
+function shareChain(db: Database.Database, shareId: number, parentId: number | null, author: User, sender: User) {
+  const passers: User[] = [];
+  let cursor = parentId;
+  const seen = new Set<number>([shareId]);
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor);
+    const parent = db
+      .prepare("SELECT id, from_user_id, parent_share_id FROM shares WHERE id = ?")
+      .get(cursor) as { id: number; from_user_id: number; parent_share_id: number | null } | undefined;
+    if (!parent) break;
+    if (parent.from_user_id !== author.id && parent.from_user_id !== sender.id) {
+      passers.push(mustUser(db, parent.from_user_id));
+    }
+    cursor = parent.parent_share_id;
+  }
+  passers.reverse();
+  const chain = [author, ...passers];
+  if (sender.id !== author.id) chain.push(sender);
+  return chain;
+}
+
 /**
  * Personal timeline. A row exists only because someone addressed a share to this user
  * (including a share they addressed to themselves).
@@ -522,6 +546,7 @@ export function getTimeline(db: Database.Database, userId: number): TimelineItem
       sharedAt: row.shared_at,
       headline,
       provenance: provenance(db, row.share_id, row.parent_share_id, author, sharedBy, userId),
+      chain: shareChain(db, row.share_id, row.parent_share_id, author, sharedBy),
       allowReshare: row.allow_reshare,
       ...engagement(db, row.post_id, userId),
     };
@@ -895,7 +920,9 @@ export function relationship(db: Database.Database, viewerId: number, otherId: n
 export function listNotifications(db: Database.Database, userId: number) {
   const rows = db
     .prepare(
-      `SELECT n.*, u.display_name AS actor_name, u.username AS actor_username, p.kind AS post_kind
+      `SELECT n.*, u.display_name AS actor_name, u.username AS actor_username, u.initials AS actor_initials,
+              u.avatar_color AS actor_color, p.kind AS post_kind, p.body AS post_body, p.media_label AS post_label,
+              p.media_tone AS post_tone
        FROM notifications n
        JOIN users u ON u.id = n.actor_id
        LEFT JOIN posts p ON p.id = n.post_id
@@ -908,8 +935,13 @@ export function listNotifications(db: Database.Database, userId: number) {
     actor_id: number;
     actor_name: string;
     actor_username: string;
+    actor_initials: string;
+    actor_color: string;
     post_id: number | null;
     post_kind: string | null;
+    post_body: string | null;
+    post_label: string | null;
+    post_tone: string | null;
     read: number;
     created_at: string;
   }[];
@@ -1008,6 +1040,69 @@ export function createTicket(db: Database.Database, userId: number, subject: str
     text.slice(0, 2000),
     new Date().toISOString(),
   );
+}
+
+export type ShareTarget = {
+  id: number;
+  username: string;
+  displayName: string;
+  initials: string;
+  avatarColor: string;
+  ok: boolean;
+  reason: string | null;
+  alreadySent: boolean;
+};
+
+/**
+ * Who the signed-in person may pick in the share sheet, with the gate result for each friend.
+ * The gate is checked again when the share is written, so this is advice for the picker only.
+ */
+export function shareTargets(db: Database.Database, viewer: User, post: Post) {
+  const sent = new Set(
+    (
+      db.prepare("SELECT to_user_id FROM shares WHERE post_id = ? AND from_user_id = ?").all(post.id, viewer.id) as {
+        to_user_id: number;
+      }[]
+    ).map((row) => row.to_user_id),
+  );
+  const friends: ShareTarget[] = listFriends(db, viewer.id).map((friend) => {
+    const decision = canShareWith(db, viewer.id, friend.id, post);
+    return {
+      id: friend.id,
+      username: friend.username,
+      displayName: friend.displayName,
+      initials: friend.initials,
+      avatarColor: friend.avatarColor,
+      ok: decision.ok && !sent.has(friend.id),
+      reason: sent.has(friend.id) ? "Already sent" : decision.ok ? null : decision.reason,
+      alreadySent: sent.has(friend.id),
+    };
+  });
+  friends.sort((a, b) => Number(b.ok) - Number(a.ok) || a.displayName.localeCompare(b.displayName));
+  const self = canShareWith(db, viewer.id, viewer.id, post);
+  const pack = (members: User[]) =>
+    members.map((member) => ({ id: member.id, displayName: member.displayName, initials: member.initials, avatarColor: member.avatarColor }));
+  return {
+    friends,
+    groups: listGroups(db, viewer.id).map((group) => ({ id: group.id, name: group.name, members: pack(group.members) })),
+    lists: listCustomLists(db, viewer.id).map((list) => ({ id: list.id, name: list.name, members: pack(list.members) })),
+    self: { ok: self.ok && !sent.has(viewer.id), reason: sent.has(viewer.id) ? "Already on your timeline" : self.ok ? null : self.reason },
+  };
+}
+
+/** Friends to show in the desktop rail: people you can pass things to, and how often you have. Not a feed. */
+export function shareCircle(db: Database.Database, userId: number) {
+  return listFriends(db, userId)
+    .map((friend) => {
+      const sentTo = (
+        db.prepare("SELECT COUNT(*) AS c FROM shares WHERE from_user_id = ? AND to_user_id = ?").get(userId, friend.id) as { c: number }
+      ).c;
+      const got = (
+        db.prepare("SELECT COUNT(*) AS c FROM shares WHERE from_user_id = ? AND to_user_id = ?").get(friend.id, userId) as { c: number }
+      ).c;
+      return { user: friend, sentTo, got, open: friend.whoCanShare !== "nobody" && !friend.suspended };
+    })
+    .sort((a, b) => b.sentTo + b.got - (a.sentTo + a.got) || a.user.displayName.localeCompare(b.user.displayName));
 }
 
 export const MEDIA_PLATES = [

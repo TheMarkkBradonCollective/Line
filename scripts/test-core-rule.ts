@@ -73,6 +73,17 @@ check(!rileyTimeline.has(market.id), "Riley did not publish the market photo to 
 check(ids("noah").has(reel.id), "Riley shared the hall reel with Noah");
 check(!marcusTimeline.has(reel.id) && !jordanTimeline.has(reel.id) && !alexTimeline.has(reel.id), "The hall reel stays with Noah");
 
+const rooftop = getPostBySeedKey(db, "rooftop");
+check(rooftop, "seeded share chain is missing");
+const rooftopForMarcus = getTimeline(db, marcus.id).find((item) => item.postId === rooftop.id);
+check(rooftopForMarcus, "Jordan passed Mina's rooftop photo to Marcus");
+check(
+  rooftopForMarcus.chain.map((person) => person.username).join(">") === "mina>alex>jordan",
+  "The share chain reads Mina, then Alex, then Jordan",
+);
+check(ids("alex").has(rooftop.id) && ids("jordan").has(rooftop.id), "Each hop in the chain is on that person's timeline");
+check(!ids("sam").has(rooftop.id) && !ids("mina").has(rooftop.id), "Nobody outside the chain receives the rooftop photo");
+
 const leakedBefore = coreRuleViolations(db);
 check(leakedBefore.length === 0, `Core rule failed before the extra share: ${leakedBefore.join("; ")}`);
 
@@ -173,4 +184,5 @@ check(updateBlocked, "Audit history is append-only");
 console.log("core rule ok");
 console.log("Jordan has the river note. Alex and Sam do not.");
 console.log("Marcus can pass Riley's market photo to Alex without Sam or Jordan receiving it.");
+console.log("Mina's rooftop photo reached Marcus through Alex and Jordan, and nobody else.");
 console.log("Administrator has no platform ownership. Founder does.");

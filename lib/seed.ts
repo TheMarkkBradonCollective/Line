@@ -508,6 +508,48 @@ export function seed(db: Database.Database) {
     createdAt: at(39),
   });
 
+  // A three-person share chain: Mina → Alex → Jordan → Marcus.
+  // Each hop is a person choosing one friend. Nobody else gets it.
+  const rooftop = createPost(db, mina.id, {
+    kind: "photo",
+    body: "Rooftop at golden hour. The whole street turned orange for four minutes 🧡",
+    mediaLabel: "Rooftop, golden hour",
+    mediaTone: "#ff9a3c,#ff4f81",
+    allowReshare: true,
+    seedKey: "rooftop",
+    createdAt: at(66),
+  });
+  mustShare(db, {
+    postId: rooftop,
+    fromUserId: mina.id,
+    recipients: [{ userId: alex.id, shareKind: "direct" }],
+    note: "You missed this, so here it is.",
+    createdAt: at(67),
+  });
+  mustShare(db, {
+    postId: rooftop,
+    fromUserId: alex.id,
+    recipients: [{ userId: jordan.id, shareKind: "direct" }],
+    note: "Mina's roof. Jordan, look at that light.",
+    createdAt: at(70),
+  });
+  mustShare(db, {
+    postId: rooftop,
+    fromUserId: jordan.id,
+    recipients: [{ userId: marcus.id, shareKind: "direct" }],
+    note: "This came through Alex. You need it on your wall.",
+    createdAt: at(76),
+  });
+
+  // Priya → Sam → Marcus: a two-hop pass.
+  mustShare(db, {
+    postId: buns,
+    fromUserId: sam.id,
+    recipients: [{ userId: marcus.id, shareKind: "direct" }],
+    note: "Priya's buns. Saving you one.",
+    createdAt: at(72),
+  });
+
   const like = db.prepare(
     "INSERT INTO reactions (user_id, post_id, kind, created_at) VALUES (?, ?, 'like', ?)",
   );
@@ -522,6 +564,19 @@ export function seed(db: Database.Database) {
   like.run(alex.id, buns, at(34));
   like.run(alex.id, dusk, at(35));
   like.run(jordan.id, bowl, at(37));
+  like.run(alex.id, rooftop, at(68));
+  like.run(jordan.id, rooftop, at(71));
+  like.run(mina.id, rooftop, at(69));
+  like.run(sam.id, rooftop, at(73));
+  like.run(theo.id, creek, at(32));
+  like.run(priya.id, buns, at(33));
+  like.run(marcus.id, buns, at(73));
+  like.run(jordan.id, bread, at(41));
+  like.run(sam.id, market, at(9));
+  like.run(mina.id, dusk, at(36));
+  like.run(noah.id, bowl, at(38));
+  like.run(jordan.id, timer, at(26));
+  like.run(alex.id, timer, at(27));
 
   createReport(db, jordan.id, {
     targetType: "profile",
