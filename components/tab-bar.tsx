@@ -2,96 +2,95 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Bell, Camera, House, UserRound, Users, type LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-const TABS = [
-  { href: "/timeline", label: "Timeline", icon: "home" },
-  { href: "/create", label: "Create", icon: "camera" },
-  { href: "/friends", label: "Friends", icon: "people" },
-  { href: "/profile", label: "Profile", icon: "person" },
-  { href: "/notifications", label: "Alerts", icon: "bell" },
-] as const;
+type Tab = { href: string; label: string; Icon: LucideIcon };
+
+// Two tabs on each side of the raised Create button. Both sides get the same
+// flex basis, so the button sits on the exact horizontal center at any width.
+const LEFT: Tab[] = [
+  { href: "/timeline", label: "Timeline", Icon: House },
+  { href: "/friends", label: "Friends", Icon: Users },
+];
+const RIGHT: Tab[] = [
+  { href: "/notifications", label: "Alerts", Icon: Bell },
+  { href: "/profile", label: "Profile", Icon: UserRound },
+];
 
 function activePath(pathname: string, href: string) {
   if (href === "/profile") return pathname === "/profile" || pathname.startsWith("/u/");
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function Icon({ name }: { name: string }) {
-  const common = { viewBox: "0 0 24 24", className: "h-6 w-6", fill: "none", stroke: "currentColor", strokeWidth: 1.8, "aria-hidden": true as const };
-  if (name === "home") {
-    return (
-      <svg {...common}>
-        <path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z" />
-      </svg>
-    );
-  }
-  if (name === "people") {
-    return (
-      <svg {...common}>
-        <circle cx="9" cy="9" r="3" />
-        <path d="M3.5 19c.6-2.6 2.7-4 5.5-4s4.9 1.4 5.5 4" />
-        <circle cx="17" cy="9.5" r="2.2" />
-        <path d="M16 15c2 .3 3.4 1.4 4 3.5" />
-      </svg>
-    );
-  }
-  if (name === "camera") {
-    return (
-      <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-        <path d="M8 8h2l1.2-2h3.6L16 8h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z" />
-        <circle cx="12" cy="13" r="3.2" />
-      </svg>
-    );
-  }
-  if (name === "person") {
-    return (
-      <svg {...common}>
-        <circle cx="12" cy="8" r="3.2" />
-        <path d="M5 19c1-3 3.2-4.5 7-4.5S18 16 19 19" />
-      </svg>
-    );
-  }
+function TabLink({ tab, active, badge }: { tab: Tab; active: boolean; badge?: number }) {
+  const { Icon } = tab;
   return (
-    <svg {...common}>
-      <path d="M6 9a6 6 0 0 1 12 0c0 7 2 7 2 9H4c0-2 2-2 2-9z" />
-      <path d="M10 20a2 2 0 0 0 4 0" />
-    </svg>
+    <Link
+      href={tab.href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "tap group relative flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl text-[10.5px] font-semibold tracking-tight",
+        active ? "text-brand" : "text-ink-3 hover:text-ink",
+      )}
+    >
+      <span className="relative">
+        <Icon className="h-[22px] w-[22px]" strokeWidth={active ? 2.4 : 1.9} aria-hidden />
+        {badge ? (
+          <span className="absolute -right-2.5 -top-1.5 min-w-[18px] rounded-full bg-brand px-1 text-center text-[10px] font-bold leading-[18px] text-white ring-2 ring-[rgb(var(--surface))]">
+            {badge > 9 ? "9+" : badge}
+          </span>
+        ) : null}
+      </span>
+      <span>{tab.label}</span>
+      <span
+        aria-hidden
+        className={cn(
+          "absolute bottom-1 h-1 w-1 rounded-full bg-brand transition-opacity",
+          active ? "opacity-100" : "opacity-0",
+        )}
+      />
+    </Link>
   );
 }
 
 export function TabBar({ unread }: { unread: number }) {
   const pathname = usePathname();
+  const createActive = activePath(pathname, "/create");
   return (
-    <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-[#ededed] bg-white md:hidden">
-      {TABS.map((tab) => {
-        const active = activePath(pathname, tab.href);
-        if (tab.icon === "camera") {
-          return (
-            <Link key={tab.href} href={tab.href} aria-current={active ? "page" : undefined} className="flex items-start justify-center">
-              <span className="-mt-5 flex h-14 w-14 items-center justify-center rounded-full bg-pine text-white shadow-[0_8px_18px_rgba(0,191,143,0.45)]">
-                <Icon name="camera" />
-                <span className="sr-only">{tab.label}</span>
-              </span>
-            </Link>
-          );
-        }
-        return (
+    <nav
+      aria-label="Primary"
+      data-testid="tab-bar"
+      className="glass-bar safe-bottom fixed inset-x-0 bottom-0 z-40 md:hidden"
+    >
+      <div className="flex h-[60px] items-stretch px-2">
+        <div className="flex flex-1 basis-0 items-stretch">
+          {LEFT.map((tab) => (
+            <TabLink key={tab.href} tab={tab} active={activePath(pathname, tab.href)} />
+          ))}
+        </div>
+        <div className="relative flex w-[76px] shrink-0 justify-center">
           <Link
-            key={tab.href}
-            href={tab.href}
-            aria-current={active ? "page" : undefined}
-            className={`flex flex-col items-center gap-0.5 py-2 text-[10px] font-extrabold ${active ? "text-pine" : "text-[#8d8d8d]"}`}
+            href="/create"
+            data-testid="create-button"
+            aria-current={createActive ? "page" : undefined}
+            aria-label="Create"
+            className="create-fab absolute -top-5 flex h-[60px] w-[60px] items-center justify-center rounded-[22px] bg-brand text-white"
           >
-            <span className="relative">
-              <Icon name={tab.icon} />
-              {tab.href === "/notifications" && unread > 0 ? (
-                <span className="absolute -right-2 -top-1 min-w-4 rounded-full bg-pine px-1 text-center text-[9px] leading-4 text-white">{unread}</span>
-              ) : null}
-            </span>
-            {tab.label}
+            <Camera className="h-7 w-7" strokeWidth={2.1} aria-hidden />
           </Link>
-        );
-      })}
+        </div>
+        <div className="flex flex-1 basis-0 items-stretch">
+          {RIGHT.map((tab) => (
+            <TabLink
+              key={tab.href}
+              tab={tab}
+              active={activePath(pathname, tab.href)}
+              badge={tab.href === "/notifications" ? unread : undefined}
+            />
+          ))}
+        </div>
+      </div>
     </nav>
   );
 }
