@@ -100,8 +100,12 @@
     color: rgb(var(--ink));
   }
 
-  input[type="checkbox"],
-  input[type="radio"] {
+  /* Fieldsets default to min-width: min-content, which lets a horizontal scroller widen the page. */
+  fieldset {
+    min-width: 0;
+  }
+
+  :where(input[type="checkbox"], input[type="radio"]) {
     accent-color: rgb(var(--brand-deep));
     width: 1.1rem;
     height: 1.1rem;
