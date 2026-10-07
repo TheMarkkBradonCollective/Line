@@ -19,7 +19,7 @@ const KINDS = [
 
 function Step({ n, title, hint, children }: { n: number; title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="surface-card p-4 sm:p-5">
+    <section className="surface-card min-w-0 p-4 sm:p-5">
       <div className="mb-3.5 flex items-center gap-3">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-soft text-[13px] font-bold text-brand-strong">{n}</span>
         <div>
@@ -52,7 +52,7 @@ export default async function CreatePage({
           <p className="banner-warn mb-4 px-3.5 py-3 text-sm">Sharing is paused by an emergency control. You can draft, but delivery will be refused.</p>
         ) : null}
       </div>
-      <form action={createPostAction} className="grid gap-3 px-4 md:px-0">
+      <form action={createPostAction} className="grid grid-cols-1 gap-3 px-4 md:px-0">
         <Step n={1} title="What are you making?">
           <fieldset>
             <legend className="sr-only">Kind</legend>

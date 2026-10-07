@@ -73,7 +73,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-[1280px] md:grid-cols-[88px_minmax(0,600px)] md:justify-center md:gap-6 md:px-4 lg:grid-cols-[248px_minmax(0,600px)] lg:gap-8 xl:grid-cols-[248px_minmax(0,600px)_320px]">
+      <div className="mx-auto grid max-w-[1280px] grid-cols-[minmax(0,1fr)] md:grid-cols-[88px_minmax(0,600px)] md:justify-center md:gap-6 md:px-4 lg:grid-cols-[248px_minmax(0,600px)] lg:gap-8 xl:grid-cols-[248px_minmax(0,600px)_320px]">
         <aside className="sticky top-0 hidden h-dvh flex-col py-6 md:flex">
           <Link href="/timeline" aria-label="LINE timeline" className="mb-6 flex items-center gap-2.5 px-3">
             <span className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-gradient-to-br from-brand to-brand-deep text-white shadow-glow">

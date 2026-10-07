@@ -185,7 +185,7 @@ export async function ProfileView({
                   <LoopMedia kind={post.kind} label={post.mediaLabel} tone={post.mediaTone} body={post.body} interactive={false} tile />
                   <span className="pointer-events-none absolute inset-0 bg-black/0 transition group-hover:bg-black/15" />
                   {likeCount ? (
-                    <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded-full bg-black/40 px-1.5 py-0.5 text-[10.5px] font-semibold text-white backdrop-blur-md">
+                    <span className="pointer-events-none absolute left-1.5 top-1.5 rounded-full bg-black/40 px-1.5 py-0.5 text-[10.5px] font-semibold text-white backdrop-blur-md">
                       ♥ {likeCount}
                     </span>
                   ) : null}

@@ -24,7 +24,7 @@ export default async function MyPostsPage({
   return (
     <div>
       <PageHeader title="My Posts" subtitle="What you made, and exactly where it went." />
-      <div className="grid gap-3 px-4 md:px-0">
+      <div className="grid grid-cols-1 gap-3 px-4 md:px-0">
         <Notice notice={query.notice} error={query.error} />
         {posts.length === 0 ? (
           <EmptyState

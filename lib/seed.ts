@@ -508,6 +508,34 @@ export function seed(db: Database.Database) {
     createdAt: at(39),
   });
 
+  // A few more things Marcus made, each sent to specific friends, so his profile grid has some life.
+  const marcusPosts: { key: string; kind: "photo" | "short" | "text"; body: string; label?: string; tone?: string; to: User[]; minute: number }[] = [
+    { key: "bridge", kind: "photo", body: "Bridge lights came on early tonight.", label: "Bridge at blue hour", tone: "#48cae4,#023e8a", to: [theo, jordan], minute: 42 },
+    { key: "coffee", kind: "photo", body: "Market coffee before the stalls open ☕", label: "Morning market coffee", tone: "#ffb703,#e85d04", to: [alex], minute: 44 },
+    { key: "porch", kind: "short", body: "Porch rain, six seconds, on repeat.", label: "Porch in the rain", tone: "#2ec4b6,#1a936f", to: [sam], minute: 46 },
+    { key: "toast", kind: "text", body: "To whoever oiled the side gate: you are a hero.", tone: "#00bf8f,#007a5c", to: [jordan], minute: 48 },
+  ];
+  for (const item of marcusPosts) {
+    const id = createPost(db, marcus.id, {
+      kind: item.kind,
+      body: item.body,
+      mediaLabel: item.label ?? null,
+      mediaTone: item.tone ?? null,
+      allowReshare: true,
+      seedKey: item.key,
+      createdAt: at(item.minute),
+    });
+    mustShare(db, {
+      postId: id,
+      fromUserId: marcus.id,
+      recipients: item.to.map((person) => ({ userId: person.id, shareKind: "direct" as const })),
+      createdAt: at(item.minute + 1),
+    });
+    for (const person of item.to) {
+      db.prepare("INSERT INTO reactions (user_id, post_id, kind, created_at) VALUES (?, ?, 'like', ?)").run(person.id, id, at(item.minute + 2));
+    }
+  }
+
   // A three-person share chain: Mina → Alex → Jordan → Marcus.
   // Each hop is a person choosing one friend. Nobody else gets it.
   const rooftop = createPost(db, mina.id, {

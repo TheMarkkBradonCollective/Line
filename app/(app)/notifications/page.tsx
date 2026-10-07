@@ -92,7 +92,7 @@ export default async function NotificationsPage() {
             When a friend shares with you, or passes your post along, you’ll see it here. This is not another feed.
           </EmptyState>
         ) : (
-          <div className="grid gap-5">
+          <div className="grid grid-cols-1 gap-5">
             {fresh.length ? (
               <section>
                 <h2 className="mb-2 px-1 text-[12px] font-semibold uppercase tracking-wider text-ink-3">New · {fresh.length}</h2>

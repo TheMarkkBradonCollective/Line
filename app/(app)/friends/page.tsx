@@ -228,7 +228,7 @@ export default async function FriendsPage({
       {tab === "groups" ? (
         <>
           <Section title="Groups" hint="Pick a whole group at once when you share. A group never gets posts on its own.">
-            <div className="grid gap-2.5">
+            <div className="grid grid-cols-1 gap-2.5">
               {groups.map((group) => (
                 <div key={group.id} className="surface-card flex items-center gap-3 p-3.5">
                   <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-soft text-brand-strong">
@@ -264,7 +264,7 @@ export default async function FriendsPage({
             </div>
           </Section>
           <Section title="Lists" hint="Lists are for picking recipients. Not an audience.">
-            <div className="grid gap-2.5">
+            <div className="grid grid-cols-1 gap-2.5">
               {lists.map((list) => (
                 <div key={list.id} className="surface-card flex items-center gap-3 p-3.5">
                   <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-surface-2 text-ink-2">
@@ -301,7 +301,7 @@ export default async function FriendsPage({
           <form action={updatePrivacyAction} className="grid">
             <input type="hidden" name="tab" value="privacy" />
             <Section title="Who can share with you" hint="This is the gate. Anyone outside it can’t put a post on your timeline, even if they find your profile.">
-              <div className="grid gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 <Choice name="whoCanShare" value="friends" label="Friends" checked={user.whoCanShare === "friends"} />
                 <Choice name="whoCanShare" value="groups" label="Only certain groups" hint="Pick them below" checked={user.whoCanShare === "groups"} />
                 <Choice name="whoCanShare" value="allow_list" label="Only people I choose" hint="Check them below" checked={user.whoCanShare === "allow_list"} />
@@ -310,7 +310,7 @@ export default async function FriendsPage({
             </Section>
             <Section title="Groups that may share with you">
               {groups.length === 0 ? <p className="text-sm text-ink-3">Make a group first.</p> : null}
-              <div className="grid gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 {groups.map((group) => (
                   <Choice key={group.id} type="checkbox" name="inbound_group" value={group.id} label={group.name} checked={group.allows_inbound_share === 1} />
                 ))}
@@ -328,14 +328,14 @@ export default async function FriendsPage({
               </div>
             </Section>
             <Section title="Who can add you">
-              <div className="grid gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 <Choice name="whoCanAdd" value="everyone" label="Anyone" checked={user.whoCanAdd === "everyone"} />
                 <Choice name="whoCanAdd" value="friends_of_friends" label="Friends of friends" checked={user.whoCanAdd === "friends_of_friends"} />
                 <Choice name="whoCanAdd" value="nobody" label="Nobody" checked={user.whoCanAdd === "nobody"} />
               </div>
             </Section>
             <Section title="Who can reshare what you made">
-              <div className="grid gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 <Choice name="whoCanReshare" value="recipients" label="People it was shared with" checked={user.whoCanReshare === "recipients"} />
                 <Choice name="whoCanReshare" value="friends" label="Only my friends" checked={user.whoCanReshare === "friends"} />
                 <Choice name="whoCanReshare" value="nobody" label="Nobody" checked={user.whoCanReshare === "nobody"} />
