@@ -252,7 +252,7 @@ export function SharePanel({
                 </button>
 
                 {data.groups.length || data.lists.length ? (
-                  <div className="no-scrollbar -mx-3 flex gap-2 overflow-x-auto px-5 py-2.5">
+                  <div className="no-scrollbar relative -mx-3 flex gap-2 overflow-x-auto px-5 py-2.5">
                     {data.groups.map((group) => {
                       const on = groups.has(group.id);
                       return (

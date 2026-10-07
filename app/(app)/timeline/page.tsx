@@ -63,7 +63,7 @@ export default async function HomePage({
             See all
           </Link>
         </div>
-        <ul className="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto px-4" data-testid="reels-strip">
+        <ul className="no-scrollbar relative mt-2.5 flex gap-2 overflow-x-auto px-4" data-testid="reels-strip">
           <li className="shrink-0">
             <Link
               href="/create?type=reel"

@@ -251,7 +251,7 @@ export async function ProfileView({
             </p>
           ) : null}
 
-          <nav className="no-scrollbar -mx-4 mt-3 flex overflow-x-auto border-t border-line/70 px-2" aria-label="Profile sections">
+          <nav className="no-scrollbar relative -mx-4 mt-3 flex overflow-x-auto border-t border-line/70 px-2" aria-label="Profile sections">
             {tabs.map(({ id, label }) => (
               <Link
                 key={id}

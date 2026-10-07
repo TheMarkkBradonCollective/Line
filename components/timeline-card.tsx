@@ -26,8 +26,7 @@ export function TimelineCard({ item, index = 0 }: { item: TimelineItem; index?: 
   if (!self && item.sharedBy.id !== item.author.id) {
     context = (
       <>
-        <span className="font-semibold text-ink">{item.sharedBy.displayName}</span>
- passed this to you
+        <span className="font-semibold text-ink">{item.sharedBy.displayName}</span> passed this to you
         {passers.length ? <span className="text-ink-3"> · via {passers.map((person) => first(person.displayName)).join(", ")}</span> : null}
       </>
     );
@@ -88,7 +87,7 @@ export function TimelineCard({ item, index = 0 }: { item: TimelineItem; index?: 
       </header>
 
       {chain.length >= 3 && !self ? (
-        <ol className="no-scrollbar mx-4 mb-2.5 flex items-center gap-1.5 overflow-x-auto text-[12px] font-semibold text-ink-2" aria-label="Share chain">
+        <ol className="no-scrollbar relative mx-4 mb-2.5 flex items-center gap-1.5 overflow-x-auto text-[12px] font-semibold text-ink-2" aria-label="Share chain">
           {chain.map((person, i) => (
             <li key={`${person.id}-${i}`} className="flex shrink-0 items-center gap-1.5">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 py-0.5 pl-0.5 pr-2">

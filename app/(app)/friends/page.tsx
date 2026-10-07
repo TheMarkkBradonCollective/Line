@@ -177,7 +177,7 @@ export default async function FriendsPage({
 
           {suggestions.length ? (
             <Section title="People you may know" hint="Friends of your friends. Suggestions are people only, never posts.">
-              <ul className="no-scrollbar -mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0" data-testid="suggestions">
+              <ul className="no-scrollbar relative -mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0" data-testid="suggestions">
                 {suggestions.map(({ user: person, mutual }) => (
                   <li key={person.id} className="surface-card flex w-[156px] shrink-0 flex-col items-center p-3.5 text-center">
                     <Link href={`/u/${person.username}`} className="flex flex-col items-center text-ink">

@@ -98,7 +98,7 @@ export default async function CreatePage({
           <Step n={2} title="Add photos or a clip" hint="Real upload isn’t connected yet, so pick placeholder frames. Photos can use several; video and reels use the first.">
             <fieldset>
               <legend className="sr-only">Placeholder frames</legend>
-              <div className="no-scrollbar -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
+              <div className="no-scrollbar relative -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
                 {MEDIA_PLATES.map((plate) => {
                   const [a, b] = plate.tone.split(",");
                   return (

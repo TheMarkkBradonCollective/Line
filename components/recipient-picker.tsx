@@ -35,7 +35,7 @@ export function RecipientPicker({ friends, groups, lists, selected = [] }: { fri
       </fieldset>
 
       {groups.length || lists.length ? (
-        <fieldset className="grid gap-2">
+        <fieldset className="grid grid-cols-[minmax(0,1fr)] gap-2">
           <legend className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-ink-3">Groups and lists</legend>
           {groups.map((group) => (
             <label key={`g${group.id}`} className="pick flex min-h-[56px] items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2.5">

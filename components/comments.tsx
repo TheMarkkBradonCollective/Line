@@ -80,12 +80,12 @@ export function Comments({
         Comments ({total})
       </h2>
       <p className="mb-3 text-[12.5px] text-ink-3">Only people this post was shared with can see these comments.</p>
-      <ul className="grid gap-3.5">
+      <ul className="grid grid-cols-[minmax(0,1fr)] gap-3.5">
         {comments.map((comment) => (
           <li key={comment.id}>
             <Bubble comment={comment} postId={postId} replyTo={null} />
             {comment.replies.length || replyingTo === comment.id ? (
-              <ul className="ml-[46px] mt-2.5 grid gap-2.5 border-l-2 border-line/70 pl-3">
+              <ul className="ml-[46px] mt-2.5 grid grid-cols-[minmax(0,1fr)] gap-2.5 border-l-2 border-line/70 pl-3">
                 {comment.replies.map((reply) => (
                   <li key={reply.id}>
                     <Bubble comment={reply} postId={postId} replyTo={comment.id} />
