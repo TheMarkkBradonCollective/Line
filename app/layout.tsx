@@ -1,10 +1,15 @@
 import type { ReactNode } from "react";
 import type { Metadata, Viewport } from "next";
-import { Fredoka, Nunito } from "next/font/google";
+import { Bricolage_Grotesque, Inter } from "next/font/google";
 import "./globals.css";
 
-const sans = Nunito({ subsets: ["latin"], variable: "--font-sans", weight: ["400", "600", "700", "800"] });
-const display = Fredoka({ subsets: ["latin"], variable: "--font-display", weight: ["500", "600", "700"] });
+const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
+const display = Bricolage_Grotesque({
+  subsets: ["latin"],
+  variable: "--font-display",
+  weight: ["500", "600", "700", "800"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "LINE",
@@ -15,7 +20,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#00BF8F",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#00BF8F" },
+    { media: "(prefers-color-scheme: dark)", color: "#111715" },
+  ],
 };
 
 export const dynamic = "force-dynamic";
@@ -23,7 +31,7 @@ export const dynamic = "force-dynamic";
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${sans.variable} ${display.variable} font-sans antialiased`}>{children}</body>
+      <body className={`${sans.variable} ${display.variable} min-h-dvh bg-bg font-sans text-ink antialiased`}>{children}</body>
     </html>
   );
 }
