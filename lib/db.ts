@@ -15,7 +15,6 @@ CREATE TABLE IF NOT EXISTS users (
   who_can_share TEXT NOT NULL DEFAULT 'friends',
   who_can_add TEXT NOT NULL DEFAULT 'everyone',
   who_can_reshare TEXT NOT NULL DEFAULT 'recipients',
-  default_visibility TEXT NOT NULL DEFAULT 'private',
   restricted INTEGER NOT NULL DEFAULT 0,
   suspended INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
@@ -190,6 +189,19 @@ CREATE TABLE IF NOT EXISTS reactions (
   FOREIGN KEY (post_id) REFERENCES posts(id)
 );
 
+CREATE TABLE IF NOT EXISTS comments (
+  id INTEGER PRIMARY KEY,
+  post_id INTEGER NOT NULL,
+  author_id INTEGER NOT NULL,
+  parent_id INTEGER,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (post_id) REFERENCES posts(id),
+  FOREIGN KEY (author_id) REFERENCES users(id),
+  FOREIGN KEY (parent_id) REFERENCES comments(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_shares_to ON shares(to_user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_shares_post ON shares(post_id);
 CREATE INDEX IF NOT EXISTS idx_reactions_post ON reactions(post_id, kind);
@@ -221,8 +233,22 @@ export function openDatabase(filePath: string) {
   return db;
 }
 
+/** Columns added after the first release. Older databases get them on open. */
+const ADDED_COLUMNS: [table: string, column: string, definition: string][] = [
+  ["users", "location", "TEXT NOT NULL DEFAULT ''"],
+  ["users", "work", "TEXT NOT NULL DEFAULT ''"],
+  ["users", "education", "TEXT NOT NULL DEFAULT ''"],
+  ["posts", "photos", "TEXT"],
+];
+
 export function migrate(db: Database.Database) {
   db.exec(SCHEMA);
+  for (const [table, column, definition] of ADDED_COLUMNS) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!columns.some((item) => item.name === column)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
+  }
 }
 
 export function createDatabase(filePath: string) {

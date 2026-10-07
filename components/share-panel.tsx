@@ -49,7 +49,7 @@ function CheckDot({ on, disabled }: { on: boolean; disabled?: boolean }) {
 
 /**
  * The share picker. Used inside the bottom sheet and on /share/[postId] as a full page.
- * Every pick becomes a timeline delivery to that person. There is no public option.
+ * Every pick becomes a delivery to that person’s feed. There is no public option.
  */
 export function SharePanel({
   postId,
@@ -137,7 +137,7 @@ export function SharePanel({
         </span>
         <h2 className="mt-5 font-display text-[28px] font-bold tracking-tight">Sent</h2>
         <p className="mt-1 text-[15px] text-ink-2">
-          On {result.delivered.length} {result.delivered.length === 1 ? "timeline" : "timelines"}. Only the people you picked.
+          On {result.delivered.length} {result.delivered.length === 1 ? "feed" : "feeds"}. Only the people you picked can see it.
         </p>
         <ul className="mt-5 flex flex-wrap justify-center gap-2">
           {result.delivered.map((person, index) => (
@@ -169,7 +169,7 @@ export function SharePanel({
           </button>
         ) : (
           <Link href="/timeline" className="press mt-6 flex h-12 w-full items-center justify-center rounded-full bg-ink text-[15px] font-semibold text-bg">
-            Back to timeline
+            Back to home
           </Link>
         )}
       </div>
@@ -181,9 +181,9 @@ export function SharePanel({
       <div className="flex items-start gap-3 px-5 pb-3 pt-1">
         <div className="min-w-0 flex-1">
           <h2 id="share-title" className="font-display text-[24px] font-bold tracking-tight">
-            Share to timelines
+            Share with people
           </h2>
-          <p className="text-[13px] text-ink-3">It lands on their timeline. Not a DM, not a public feed.</p>
+          <p className="text-[13px] text-ink-3">It lands in their feed and nobody else’s. No public option.</p>
         </div>
         {variant === "sheet" ? (
           <button type="button" onClick={onClose} aria-label="Close" className="tap press -mr-2 -mt-1 flex items-center justify-center rounded-full text-ink-2 hover:bg-surface-2">
@@ -245,14 +245,14 @@ export function SharePanel({
                     <UserRound className="h-5 w-5" aria-hidden />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] font-semibold">My timeline</span>
+                    <span className="block text-[15px] font-semibold">My feed</span>
                     <span className="block text-[12.5px] text-ink-3">{data.self.reason ?? "Only you see it there"}</span>
                   </span>
                   <CheckDot on={self} disabled={!data.self.ok} />
                 </button>
 
                 {data.groups.length || data.lists.length ? (
-                  <div className="no-scrollbar -mx-3 flex gap-2 overflow-x-auto px-5 py-2.5">
+                  <div className="no-scrollbar relative -mx-3 flex gap-2 overflow-x-auto px-5 py-2.5">
                     {data.groups.map((group) => {
                       const on = groups.has(group.id);
                       return (
@@ -365,7 +365,7 @@ export function SharePanel({
                   <>
                     <AvatarStack people={picked} size="sm" max={4} />
                     <span className="truncate text-sm font-semibold text-ink-2">
-                      {self && !picked.length ? "Your timeline" : `${total} ${total === 1 ? "timeline" : "timelines"}`}
+                      {self && !picked.length ? "Your feed" : `${total} ${total === 1 ? "person" : "people"}`}
                     </span>
                   </>
                 ) : (

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Camera, House, UserRound, Users, type LucideIcon } from "lucide-react";
+import { Clapperboard, House, Plus, UserRound, Users, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Tab = { href: string; label: string; Icon: LucideIcon };
@@ -10,16 +10,16 @@ type Tab = { href: string; label: string; Icon: LucideIcon };
 // Two tabs on each side of the raised Create button. Both sides get the same
 // flex basis, so the button sits on the exact horizontal center at any width.
 const LEFT: Tab[] = [
-  { href: "/timeline", label: "Timeline", Icon: House },
-  { href: "/friends", label: "Friends", Icon: Users },
+  { href: "/timeline", label: "Home", Icon: House },
+  { href: "/reels", label: "Reels", Icon: Clapperboard },
 ];
 const RIGHT: Tab[] = [
-  { href: "/notifications", label: "Alerts", Icon: Bell },
+  { href: "/friends", label: "Friends", Icon: Users },
   { href: "/profile", label: "Profile", Icon: UserRound },
 ];
 
 function activePath(pathname: string, href: string) {
-  if (href === "/profile") return pathname === "/profile" || pathname.startsWith("/u/");
+  if (href === "/profile") return pathname === "/profile";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -54,7 +54,7 @@ function TabLink({ tab, active, badge }: { tab: Tab; active: boolean; badge?: nu
   );
 }
 
-export function TabBar({ unread }: { unread: number }) {
+export function TabBar({ requests = 0 }: { requests?: number }) {
   const pathname = usePathname();
   const createActive = activePath(pathname, "/create");
   return (
@@ -77,7 +77,7 @@ export function TabBar({ unread }: { unread: number }) {
             aria-label="Create"
             className="create-fab absolute -top-5 flex h-[60px] w-[60px] items-center justify-center rounded-[22px] bg-brand text-white"
           >
-            <Camera className="h-7 w-7" strokeWidth={2.1} aria-hidden />
+            <Plus className="h-8 w-8" strokeWidth={2.4} aria-hidden />
           </Link>
         </div>
         <div className="flex flex-1 basis-0 items-stretch">
@@ -86,7 +86,7 @@ export function TabBar({ unread }: { unread: number }) {
               key={tab.href}
               tab={tab}
               active={activePath(pathname, tab.href)}
-              badge={tab.href === "/notifications" ? unread : undefined}
+              badge={tab.href === "/friends" ? requests : undefined}
             />
           ))}
         </div>

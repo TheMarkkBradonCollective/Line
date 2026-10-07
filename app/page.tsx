@@ -42,7 +42,7 @@ export default async function HomePage({
           <p className="wordmark text-[56px] text-white drop-shadow-sm lg:text-[88px]">LINE</p>
           <h1 className="mt-4 font-display text-[40px] font-bold leading-[0.95] tracking-[-0.04em] lg:text-[64px]">{tagline}</h1>
           <p className="mt-4 max-w-md text-[16px] leading-relaxed text-white/90 lg:text-lg">
-            A post shows up on your timeline only when a friend picks you. No Discover. No algorithm. Just people passing things to people.
+            It looks like the social app you know, with one rule: no share, no see. Profiles are open; posts reach only the people they were shared with. No Discover. No algorithm.
           </p>
           <ol className="mt-6 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold">
             {STEPS.map((step, index) => (

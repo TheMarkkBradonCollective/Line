@@ -552,3 +552,40 @@
     stroke-dashoffset: 0;
   }
 }
+
+/* Facebook-style wiring additions */
+@keyframes kenburns {
+  0% { transform: scale(1) translate3d(0, 0, 0); }
+  100% { transform: scale(1.12) translate3d(-2%, -2%, 0); }
+}
+@keyframes progress-run {
+  0% { width: 0; }
+  100% { width: 100%; }
+}
+.kenburns {
+  animation: kenburns 9s ease-in-out infinite alternate;
+  transform-origin: 60% 40%;
+}
+.progress-run {
+  animation: progress-run 9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kenburns,
+  .progress-run {
+    animation: none;
+  }
+  .progress-run {
+    width: 35%;
+  }
+}
+.create-form:has(input[name="kind"][value="text"]:checked) [data-step="frames"] {
+  display: none;
+}
+/* Step badges count only the steps that are showing (the frames step hides for text posts). */
+.create-form {
+  counter-reset: step;
+}
+.create-form .step-n::before {
+  counter-increment: step;
+  content: counter(step);
+}

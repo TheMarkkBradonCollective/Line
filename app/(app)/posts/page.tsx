@@ -50,7 +50,7 @@ export default async function MyPostsPage({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Badge>{kindLabel(post.kind)}</Badge>
-                    {onOwnTimeline ? <Badge className="bg-brand-soft text-brand-strong">On your timeline</Badge> : null}
+                    {onOwnTimeline ? <Badge className="bg-brand-soft text-brand-strong">In your feed</Badge> : null}
                     {post.hidden ? <Badge className="bg-danger/10 text-danger">Hidden by staff</Badge> : null}
                   </div>
                   <p className="mt-1.5 line-clamp-2 text-[14.5px] leading-snug">{post.body}</p>

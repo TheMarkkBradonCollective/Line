@@ -6,7 +6,7 @@ type Group = { id: number; name: string; members: User[] };
 type List = { id: number; name: string; members: User[] };
 
 /** Server-rendered recipient picker for Create and the no-JS share page. Same rules as the share sheet. */
-export function RecipientPicker({ friends, groups, lists }: { friends: User[]; groups: Group[]; lists: List[] }) {
+export function RecipientPicker({ friends, groups, lists, selected = [] }: { friends: User[]; groups: Group[]; lists: List[]; selected?: number[] }) {
   return (
     <div className="grid gap-5">
       <label className="pick flex min-h-[64px] items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3">
@@ -14,8 +14,8 @@ export function RecipientPicker({ friends, groups, lists }: { friends: User[]; g
           <UserRound className="h-5 w-5" aria-hidden />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-semibold">My own timeline</span>
-          <span className="block text-[12.5px] text-ink-3">Only you see it, unless you also pick people.</span>
+          <span className="block text-[15px] font-semibold">Just me</span>
+          <span className="block text-[12.5px] text-ink-3">It stays on your profile and in your feed. Pick people to share it.</span>
         </span>
         <input type="checkbox" name="self" />
       </label>
@@ -26,7 +26,7 @@ export function RecipientPicker({ friends, groups, lists }: { friends: User[]; g
         <div className="flex flex-wrap gap-2">
           {friends.map((friend) => (
             <label key={friend.id} className="pick chip min-h-[44px] cursor-pointer pl-1.5 pr-3.5">
-              <input type="checkbox" name="friend" value={friend.id} className="sr-only" />
+              <input type="checkbox" name="friend" value={friend.id} defaultChecked={selected.includes(friend.id)} className="sr-only" />
               <Avatar initials={friend.initials} color={friend.avatarColor} name={friend.displayName} size="xs" />
               <span className="text-ink">{friend.displayName}</span>
             </label>
@@ -35,7 +35,7 @@ export function RecipientPicker({ friends, groups, lists }: { friends: User[]; g
       </fieldset>
 
       {groups.length || lists.length ? (
-        <fieldset className="grid gap-2">
+        <fieldset className="grid grid-cols-[minmax(0,1fr)] gap-2">
           <legend className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-ink-3">Groups and lists</legend>
           {groups.map((group) => (
             <label key={`g${group.id}`} className="pick flex min-h-[56px] items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2.5">

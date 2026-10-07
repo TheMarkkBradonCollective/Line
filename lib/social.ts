@@ -1,7 +1,29 @@
 import type Database from "better-sqlite3";
 import { isVideoKind } from "./format";
-import type { AddPolicy, Post, PostKind, PostRow, ResharePolicy, SharePolicy, User, UserRow } from "./types";
+import { canViewPost, canViewProfile } from "./access";
+import type { AddPolicy, Frame, Post, PostKind, PostRow, ResharePolicy, SharePolicy, User, UserRow } from "./types";
 import { mapPost, mapUser } from "./types";
+
+export { canViewPost, canViewProfile, postAccess, requireVisible } from "./access";
+
+export const REACTION_KINDS = ["like", "love", "haha", "wow", "sad"] as const;
+export type ReactionKind = (typeof REACTION_KINDS)[number];
+
+export type ReactionSummary = {
+  total: number;
+  mine: ReactionKind | null;
+  /** Kinds in use, most common first. */
+  top: ReactionKind[];
+  counts: Partial<Record<ReactionKind, number>>;
+};
+
+export type Engagement = {
+  likeCount: number;
+  shareCount: number;
+  liked: boolean;
+  reactions: ReactionSummary;
+  commentCount: number;
+};
 
 export type TimelineItem = {
   shareId: number;
@@ -20,9 +42,14 @@ export type TimelineItem = {
   headline: string;
   provenance: string;
   allowReshare: number;
+  frames: Frame[];
+  /** True when the item is the viewer's own post rather than something addressed to them. */
+  ownPost: boolean;
   likeCount: number;
   shareCount: number;
   liked: boolean;
+  reactions: ReactionSummary;
+  commentCount: number;
   /** Who carried the post here, in order: creator first, the person who sent it to you last. */
   chain: User[];
 };
@@ -360,6 +387,8 @@ export function createPost(
     body: string;
     mediaLabel?: string | null;
     mediaTone?: string | null;
+    /** Several frames for a photo post. The first becomes the cover. */
+    photos?: Frame[] | null;
     allowReshare: boolean;
     seedKey?: string | null;
     createdAt?: string;
@@ -373,21 +402,25 @@ export function createPost(
   const body = input.body.trim();
   if (!body) throw new Error("Write something first.");
   if (body.length > 2000) throw new Error("Keep it under 2,000 characters.");
-  if (input.kind !== "text" && !input.mediaLabel) {
+  const photos = input.kind === "photo" && input.photos?.length ? input.photos.slice(0, 6) : null;
+  const mediaLabel = photos ? photos[0].label : input.mediaLabel;
+  const mediaTone = photos ? photos[0].tone : input.mediaTone;
+  if (input.kind !== "text" && !mediaLabel) {
     throw new Error("Choose a placeholder frame. Real upload is not connected.");
   }
   const info = db
     .prepare(
       `INSERT INTO posts
-        (author_id, kind, body, media_label, media_tone, allow_reshare, hidden, seed_key, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+        (author_id, kind, body, media_label, media_tone, photos, allow_reshare, hidden, seed_key, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     )
     .run(
       authorId,
       input.kind,
       body,
-      input.kind === "text" ? null : input.mediaLabel ?? null,
-      input.kind === "text" ? null : input.mediaTone ?? "#00bf8f,#009e78",
+      input.kind === "text" ? null : mediaLabel ?? null,
+      input.kind === "text" ? null : mediaTone ?? "#00bf8f,#009e78",
+      photos && photos.length > 1 ? JSON.stringify(photos) : null,
       input.allowReshare ? 1 : 0,
       input.seedKey ?? null,
       input.createdAt ?? new Date().toISOString(),
@@ -403,6 +436,7 @@ export function publishPost(
     body: string;
     mediaLabel?: string | null;
     mediaTone?: string | null;
+    photos?: Frame[] | null;
     allowReshare: boolean;
     choice: RecipientChoice;
     note?: string | null;
@@ -410,7 +444,7 @@ export function publishPost(
 ) {
   const { recipients, errors } = expandRecipients(db, authorId, input.choice);
   if (recipients.length === 0) {
-    throw new Error("Choose your timeline, people, a group, or a list. A post only moves when you send it to someone.");
+    throw new Error("Pick “Just me”, people, a group, or a list. A post only reaches someone when you share it with them.");
   }
   const postId = createPost(db, authorId, input);
   const shared = recipients.length
@@ -491,6 +525,8 @@ export function getTimeline(db: Database.Database, userId: number): TimelineItem
          p.body,
          p.media_label,
          p.media_tone,
+         p.photos,
+         p.hidden,
          p.author_id,
          p.allow_reshare,
          g.name AS group_name
@@ -515,6 +551,8 @@ export function getTimeline(db: Database.Database, userId: number): TimelineItem
     body: string;
     media_label: string | null;
     media_tone: string | null;
+    photos: string | null;
+    hidden: number;
     author_id: number;
     allow_reshare: number;
     group_name: string | null;
@@ -548,9 +586,67 @@ export function getTimeline(db: Database.Database, userId: number): TimelineItem
       provenance: provenance(db, row.share_id, row.parent_share_id, author, sharedBy, userId),
       chain: shareChain(db, row.share_id, row.parent_share_id, author, sharedBy),
       allowReshare: row.allow_reshare,
+      frames: mapPost({ ...row, id: row.post_id, seed_key: null, hidden_reason: null, created_at: row.shared_at } as PostRow).frames,
+      ownPost: false,
       ...engagement(db, row.post_id, userId),
     };
   });
+}
+
+/**
+ * Home feed: one card per post that reached you (the latest share wins), plus everything you made.
+ * Every item passes the same access check as the post page.
+ */
+export function getHomeFeed(db: Database.Database, userId: number): TimelineItem[] {
+  const seen = new Set<number>();
+  const items: TimelineItem[] = [];
+  for (const item of getTimeline(db, userId)) {
+    if (seen.has(item.postId)) continue;
+    seen.add(item.postId);
+    items.push(item);
+  }
+  const me = mustUser(db, userId);
+  const own = db
+    .prepare("SELECT * FROM posts WHERE author_id = ? AND hidden = 0 ORDER BY created_at DESC, id DESC")
+    .all(userId) as PostRow[];
+  for (const row of own) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    items.push(ownItem(db, me, mapPost(row)));
+  }
+  return items
+    .filter((item) => canViewPost(db, userId, { id: item.postId, authorId: item.author.id, hidden: 0 }))
+    .sort((a, b) => b.sharedAt.localeCompare(a.sharedAt) || b.postId - a.postId);
+}
+
+function ownItem(db: Database.Database, me: User, post: Post): TimelineItem {
+  const sentTo = (
+    db.prepare("SELECT COUNT(DISTINCT to_user_id) AS c FROM shares WHERE post_id = ? AND from_user_id = ?").get(post.id, me.id) as {
+      c: number;
+    }
+  ).c;
+  return {
+    shareId: -post.id,
+    postId: post.id,
+    toUserId: me.id,
+    kind: post.kind,
+    body: post.body,
+    mediaLabel: post.mediaLabel,
+    mediaTone: post.mediaTone,
+    author: me,
+    sharedBy: me,
+    shareKind: "own",
+    groupName: null,
+    note: null,
+    sharedAt: post.createdAt,
+    headline: "You posted this.",
+    provenance: sentTo ? `You sent this to ${sentTo} ${sentTo === 1 ? "person" : "people"}.` : "Only you can see this until you share it.",
+    chain: [me],
+    allowReshare: post.allowReshare,
+    frames: post.frames,
+    ownPost: true,
+    ...engagement(db, post.id, me.id),
+  };
 }
 
 export function coreRuleViolations(db: Database.Database) {
@@ -779,7 +875,7 @@ export function deleteList(db: Database.Database, ownerId: number, listId: numbe
 export function updateProfile(
   db: Database.Database,
   userId: number,
-  input: { displayName: string; bio: string; avatarColor: string },
+  input: { displayName: string; bio: string; avatarColor: string; location?: string; work?: string; education?: string },
 ) {
   const displayName = input.displayName.trim();
   if (displayName.length < 2) throw new Error("Use a name people will recognize.");
@@ -795,6 +891,14 @@ export function updateProfile(
     initials || "•",
     userId,
   );
+  if (input.location !== undefined || input.work !== undefined || input.education !== undefined) {
+    db.prepare("UPDATE users SET location = ?, work = ?, education = ? WHERE id = ?").run(
+      (input.location ?? "").trim().slice(0, 80),
+      (input.work ?? "").trim().slice(0, 80),
+      (input.education ?? "").trim().slice(0, 80),
+      userId,
+    );
+  }
 }
 
 export function updatePrivacy(
@@ -826,60 +930,222 @@ export function updatePrivacy(
   }
 }
 
-function engagement(db: Database.Database, postId: number, viewerId: number) {
-  const likeCount = (
-    db.prepare("SELECT COUNT(*) AS c FROM reactions WHERE post_id = ? AND kind = 'like'").get(postId) as { c: number }
-  ).c;
-  const shareCount = (db.prepare("SELECT COUNT(*) AS c FROM shares WHERE post_id = ?").get(postId) as { c: number }).c;
-  const liked = Boolean(
-    db.prepare("SELECT 1 AS ok FROM reactions WHERE post_id = ? AND user_id = ? AND kind = 'like'").get(postId, viewerId),
-  );
-  return { likeCount, shareCount, liked };
+function reactionSummary(db: Database.Database, postId: number, viewerId: number): ReactionSummary {
+  const rows = db
+    .prepare(
+      `SELECT r.kind, COUNT(*) AS c FROM reactions r
+       WHERE r.post_id = ?
+         AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = ? AND b.blocked_id = r.user_id) OR (b.blocker_id = r.user_id AND b.blocked_id = ?))
+       GROUP BY r.kind ORDER BY c DESC`,
+    )
+    .all(postId, viewerId, viewerId) as { kind: ReactionKind; c: number }[];
+  const counts: Partial<Record<ReactionKind, number>> = {};
+  let total = 0;
+  for (const row of rows) {
+    counts[row.kind] = row.c;
+    total += row.c;
+  }
+  const mine = db.prepare("SELECT kind FROM reactions WHERE post_id = ? AND user_id = ? LIMIT 1").get(postId, viewerId) as
+    | { kind: ReactionKind }
+    | undefined;
+  return { total, mine: mine?.kind ?? null, top: rows.map((row) => row.kind).slice(0, 3), counts };
 }
 
-export function toggleLike(db: Database.Database, userId: number, postId: number) {
-  const existing = db
-    .prepare("SELECT 1 AS ok FROM reactions WHERE user_id = ? AND post_id = ? AND kind = 'like'")
-    .get(userId, postId);
-  if (existing) {
-    db.prepare("DELETE FROM reactions WHERE user_id = ? AND post_id = ? AND kind = 'like'").run(userId, postId);
-  } else {
-    db.prepare("INSERT INTO reactions (user_id, post_id, kind, created_at) VALUES (?, ?, 'like', ?)").run(
-      userId,
-      postId,
-      new Date().toISOString(),
-    );
-  }
+function engagement(db: Database.Database, postId: number, viewerId: number): Engagement {
+  const reactions = reactionSummary(db, postId, viewerId);
+  const shareCount = (db.prepare("SELECT COUNT(*) AS c FROM shares WHERE post_id = ?").get(postId) as { c: number }).c;
+  const commentCount = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM comments c
+         WHERE c.post_id = ?
+           AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = ? AND b.blocked_id = c.author_id) OR (b.blocker_id = c.author_id AND b.blocked_id = ?))`,
+      )
+      .get(postId, viewerId, viewerId) as { c: number }
+  ).c;
+  return { likeCount: reactions.total, shareCount, liked: reactions.mine !== null, reactions, commentCount };
+}
+
+/** Counts for a post, or null when the viewer cannot see it. */
+export function postEngagement(db: Database.Database, viewerId: number, postId: number) {
+  if (!canViewPost(db, viewerId, postId)) return null;
+  return engagement(db, postId, viewerId);
+}
+
+/** One reaction per person per post. Passing null clears it. Only people who can see the post can react. */
+export function setReaction(db: Database.Database, userId: number, postId: number, kind: ReactionKind | null) {
+  if (!canViewPost(db, userId, postId)) throw new Error("That post isn’t available to you.");
+  if (kind !== null && !REACTION_KINDS.includes(kind)) throw new Error("Pick a reaction.");
+  const write = db.transaction(() => {
+    db.prepare("DELETE FROM reactions WHERE user_id = ? AND post_id = ?").run(userId, postId);
+    if (kind) {
+      db.prepare("INSERT INTO reactions (user_id, post_id, kind, created_at) VALUES (?, ?, ?, ?)").run(
+        userId,
+        postId,
+        kind,
+        new Date().toISOString(),
+      );
+    }
+  });
+  write();
   return engagement(db, postId, userId);
 }
 
+export function toggleLike(db: Database.Database, userId: number, postId: number) {
+  const current = reactionSummary(db, postId, userId).mine;
+  return setReaction(db, userId, postId, current ? null : "like");
+}
+
+export type CommentNode = {
+  id: number;
+  postId: number;
+  body: string;
+  createdAt: string;
+  author: User;
+  replies: CommentNode[];
+};
+
+/** Comments on a post, oldest first, replies nested one level. Null when the viewer cannot see the post. */
+export function listComments(
+  db: Database.Database,
+  viewerId: number,
+  postId: number,
+  options: { allowStaff?: boolean } = {},
+): CommentNode[] | null {
+  if (!canViewPost(db, viewerId, postId, options)) return null;
+  const rows = db
+    .prepare(
+      `SELECT c.* FROM comments c
+       WHERE c.post_id = ?
+         AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = ? AND b.blocked_id = c.author_id) OR (b.blocker_id = c.author_id AND b.blocked_id = ?))
+       ORDER BY c.created_at ASC, c.id ASC`,
+    )
+    .all(postId, viewerId, viewerId) as {
+    id: number;
+    post_id: number;
+    author_id: number;
+    parent_id: number | null;
+    body: string;
+    created_at: string;
+  }[];
+  const nodes = new Map<number, CommentNode>();
+  const top: CommentNode[] = [];
+  for (const row of rows) {
+    const node: CommentNode = {
+      id: row.id,
+      postId: row.post_id,
+      body: row.body,
+      createdAt: row.created_at,
+      author: mustUser(db, row.author_id),
+      replies: [],
+    };
+    nodes.set(row.id, node);
+    const parent = row.parent_id ? nodes.get(row.parent_id) : undefined;
+    if (parent) parent.replies.push(node);
+    else if (!row.parent_id) top.push(node);
+  }
+  return top;
+}
+
+export function addComment(
+  db: Database.Database,
+  userId: number,
+  postId: number,
+  input: { body: string; parentId?: number | null; createdAt?: string },
+) {
+  const user = mustUser(db, userId);
+  if (user.suspended || user.restricted) throw new Error("Your account cannot comment right now.");
+  if (!canViewPost(db, userId, postId)) throw new Error("That post isn’t available to you.");
+  const body = input.body.trim();
+  if (!body) throw new Error("Write a comment first.");
+  if (body.length > 1000) throw new Error("Keep comments under 1,000 characters.");
+  let parentId: number | null = null;
+  let parentAuthor: number | null = null;
+  if (input.parentId) {
+    const parent = db.prepare("SELECT id, post_id, parent_id, author_id FROM comments WHERE id = ?").get(input.parentId) as
+      | { id: number; post_id: number; parent_id: number | null; author_id: number }
+      | undefined;
+    if (!parent || parent.post_id !== postId) throw new Error("That comment isn’t on this post.");
+    parentId = parent.parent_id ?? parent.id;
+    parentAuthor = parent.author_id;
+  }
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const info = db
+    .prepare("INSERT INTO comments (post_id, author_id, parent_id, body, created_at) VALUES (?, ?, ?, ?, ?)")
+    .run(postId, userId, parentId, body, createdAt);
+  const post = getPost(db, postId)!;
+  const notify = db.prepare(
+    "INSERT INTO notifications (user_id, actor_id, kind, post_id, share_id, read, created_at) VALUES (?, ?, ?, ?, NULL, 0, ?)",
+  );
+  if (parentAuthor && parentAuthor !== userId) notify.run(parentAuthor, userId, "replied", postId, createdAt);
+  if (post.authorId !== userId && post.authorId !== parentAuthor) notify.run(post.authorId, userId, "commented", postId, createdAt);
+  return Number(info.lastInsertRowid);
+}
+
+export type ProfileSection = "posts" | "photos" | "videos" | "reels";
+
+const SECTION_KINDS: Record<Exclude<ProfileSection, "posts">, PostKind[]> = {
+  photos: ["photo"],
+  videos: ["video", "long_video"],
+  reels: ["reel", "short"],
+};
+
+export type ProfilePost = Engagement & {
+  post: Post;
+  /** The latest person who sent it to the viewer. Null on your own profile. */
+  reachedBy: User | null;
+};
+
+/**
+ * A person's posts as the viewer is allowed to see them.
+ * Your own profile shows everything you made. Anyone else's shows only what reached you.
+ */
+export function profilePosts(
+  db: Database.Database,
+  viewerId: number,
+  personId: number,
+  section: ProfileSection = "posts",
+): ProfilePost[] {
+  if (!canViewProfile(db, viewerId, personId)) return [];
+  const kinds = section === "posts" ? null : SECTION_KINDS[section];
+  const rows = db
+    .prepare("SELECT * FROM posts WHERE author_id = ? AND hidden = 0 ORDER BY created_at DESC, id DESC")
+    .all(personId) as PostRow[];
+  return rows
+    .filter((row) => !kinds || kinds.includes(row.kind as PostKind))
+    .filter((row) => canViewPost(db, viewerId, { id: row.id, authorId: row.author_id, hidden: row.hidden }))
+    .map((row) => {
+      let reachedBy: User | null = null;
+      if (viewerId !== personId) {
+        const share = db
+          .prepare("SELECT from_user_id FROM shares WHERE post_id = ? AND to_user_id = ? ORDER BY created_at DESC, id DESC LIMIT 1")
+          .get(row.id, viewerId) as { from_user_id: number } | undefined;
+        reachedBy = share ? mustUser(db, share.from_user_id) : null;
+      }
+      return { post: mapPost(row), reachedBy, ...engagement(db, row.id, viewerId) };
+    });
+}
+
+/** Kept for older callers. Same rule as profilePosts. */
 export function postsVisibleTo(db: Database.Database, viewerId: number, personId: number) {
-  const rows =
-    viewerId === personId
-      ? (db
-          .prepare("SELECT * FROM posts WHERE author_id = ? AND hidden = 0 ORDER BY created_at DESC, id DESC")
-          .all(personId) as PostRow[])
-      : (db
-          .prepare(
-            `SELECT p.* FROM posts p
-             WHERE p.author_id = ? AND p.hidden = 0
-               AND EXISTS (SELECT 1 FROM shares s WHERE s.post_id = p.id AND s.to_user_id = ?)
-             ORDER BY p.created_at DESC, p.id DESC`,
-          )
-          .all(personId, viewerId) as PostRow[]);
-  return rows.map((row) => ({ post: mapPost(row), ...engagement(db, row.id, viewerId) }));
+  return profilePosts(db, viewerId, personId);
+}
+
+export function mutualFriends(db: Database.Database, a: number, b: number) {
+  if (a === b) return [];
+  const mine = new Set(friendIds(db, a));
+  return friendIds(db, b)
+    .filter((id) => mine.has(id))
+    .map((id) => mustUser(db, id))
+    .sort((x, y) => x.displayName.localeCompare(y.displayName));
 }
 
 export function profileStats(db: Database.Database, viewerId: number, personId: number) {
-  const friends = (
-    db
-      .prepare(
-        `SELECT COUNT(*) AS c FROM friendships
-         WHERE status = 'accepted' AND (requester_id = ? OR addressee_id = ?)`,
-      )
-      .get(personId, personId) as { c: number }
+  const friends = friendIds(db, personId).length;
+  const posts = profilePosts(db, viewerId, personId).length;
+  const total = (
+    db.prepare("SELECT COUNT(*) AS c FROM posts WHERE author_id = ? AND hidden = 0").get(personId) as { c: number }
   ).c;
-  const posts = postsVisibleTo(db, viewerId, personId).length;
   const shares =
     viewerId === personId
       ? (db.prepare("SELECT COUNT(*) AS c FROM shares WHERE from_user_id = ?").get(personId) as { c: number }).c
@@ -888,7 +1154,91 @@ export function profileStats(db: Database.Database, viewerId: number, personId: 
             .prepare("SELECT COUNT(*) AS c FROM shares WHERE from_user_id = ? AND to_user_id = ?")
             .get(personId, viewerId) as { c: number }
         ).c;
-  return { friends, posts, shares };
+  return { friends, posts, shares, mutual: mutualFriends(db, viewerId, personId).length, unseen: Math.max(0, total - posts) };
+}
+
+export type ReelItem = Engagement & {
+  post: Post;
+  author: User;
+  reachedBy: User | null;
+  note: string | null;
+  at: string;
+};
+
+function reelItem(db: Database.Database, viewerId: number, row: PostRow): ReelItem {
+  const share = db
+    .prepare("SELECT from_user_id, note, created_at FROM shares WHERE post_id = ? AND to_user_id = ? ORDER BY created_at DESC, id DESC LIMIT 1")
+    .get(row.id, viewerId) as { from_user_id: number; note: string | null; created_at: string } | undefined;
+  const author = mustUser(db, row.author_id);
+  const reachedBy = share && share.from_user_id !== viewerId ? mustUser(db, share.from_user_id) : null;
+  return {
+    post: mapPost(row),
+    author,
+    reachedBy,
+    note: share?.note ?? null,
+    at: share?.created_at ?? row.created_at,
+    ...engagement(db, row.id, viewerId),
+  };
+}
+
+/** Reels that reached the viewer, plus their own. Never a discovery feed. */
+export function listReels(db: Database.Database, viewerId: number): ReelItem[] {
+  const rows = db
+    .prepare("SELECT * FROM posts WHERE kind IN ('reel', 'short') AND hidden = 0 ORDER BY created_at DESC, id DESC")
+    .all() as PostRow[];
+  return rows
+    .filter((row) => canViewPost(db, viewerId, { id: row.id, authorId: row.author_id, hidden: row.hidden }))
+    .map((row) => reelItem(db, viewerId, row))
+    .sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/** One reel by id. Null when it is not a reel or the viewer cannot see it. */
+export function getReel(db: Database.Database, viewerId: number, postId: number) {
+  const row = db.prepare("SELECT * FROM posts WHERE id = ? AND kind IN ('reel', 'short')").get(postId) as PostRow | undefined;
+  if (!row) return null;
+  if (!canViewPost(db, viewerId, { id: row.id, authorId: row.author_id, hidden: row.hidden })) return null;
+  return reelItem(db, viewerId, row);
+}
+
+export type PersonCard = { user: User; mutual: User[]; relationship: ReturnType<typeof relationship> };
+
+/** People you may know, by mutual friends only. Never based on content. */
+export function friendSuggestions(db: Database.Database, userId: number, limit = 8): PersonCard[] {
+  const mine = new Set(friendIds(db, userId));
+  const candidates = new Set<number>();
+  for (const friend of mine) for (const id of friendIds(db, friend)) candidates.add(id);
+  const cards: PersonCard[] = [];
+  for (const id of candidates) {
+    if (id === userId || mine.has(id)) continue;
+    const rel = relationship(db, userId, id);
+    if (rel !== "none") continue;
+    const user = mustUser(db, id);
+    if (user.suspended || user.whoCanAdd === "nobody") continue;
+    cards.push({ user, mutual: mutualFriends(db, userId, id), relationship: rel });
+  }
+  return cards
+    .sort((a, b) => b.mutual.length - a.mutual.length || a.user.displayName.localeCompare(b.user.displayName))
+    .slice(0, limit);
+}
+
+/** Find people by name or username. Returns people only, never posts. */
+export function searchPeople(db: Database.Database, viewerId: number, query: string, limit = 20): PersonCard[] {
+  const q = query.trim().toLowerCase().replace(/^@/, "");
+  if (q.length < 1) return [];
+  const like = `%${q.replace(/[%_]/g, "")}%`;
+  const rows = db
+    .prepare(
+      `SELECT * FROM users
+       WHERE (lower(display_name) LIKE ? OR lower(username) LIKE ?)
+         AND id != ?
+         AND NOT EXISTS (SELECT 1 FROM blocks WHERE blocker_id = users.id AND blocked_id = ?)
+       ORDER BY display_name LIMIT ?`,
+    )
+    .all(like, like, viewerId, viewerId, limit) as UserRow[];
+  return rows.map((row) => {
+    const user = mapUser(row);
+    return { user, mutual: mutualFriends(db, viewerId, user.id), relationship: relationship(db, viewerId, user.id) };
+  });
 }
 
 export function setAllowReshare(db: Database.Database, userId: number, postId: number, allow: boolean) {
@@ -949,6 +1299,8 @@ export function listNotifications(db: Database.Database, userId: number) {
     let text = `${row.actor_name} shared something with you.`;
     if (row.kind === "shared_onward") text = `${row.actor_name} shared your post onward.`;
     if (row.kind === "reshared_video") text = `${row.actor_name} reshared your video.`;
+    if (row.kind === "commented") text = `${row.actor_name} commented on your post.`;
+    if (row.kind === "replied") text = `${row.actor_name} replied to your comment.`;
     return { ...row, text };
   });
 }
@@ -971,18 +1323,6 @@ export function markNotificationRead(db: Database.Database, userId: number, noti
 
 export function markAllNotificationsRead(db: Database.Database, userId: number) {
   db.prepare("UPDATE notifications SET read = 1 WHERE user_id = ?").run(userId);
-}
-
-export function canViewPost(db: Database.Database, viewer: User, post: Post) {
-  if (post.authorId === viewer.id) return true;
-  if (post.hidden) {
-    return hasPermission(db, viewer.id, "view_reported_content") || hasPermission(db, viewer.id, "moderate_content");
-  }
-  if (hasShareTo(db, post.id, viewer.id)) return true;
-  if (hasPermission(db, viewer.id, "view_reported_content") || hasPermission(db, viewer.id, "moderate_content")) {
-    return true;
-  }
-  return false;
 }
 
 export function shareHistory(db: Database.Database, postId: number) {

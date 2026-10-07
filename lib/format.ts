@@ -2,8 +2,8 @@ const KINDS: Record<string, string> = {
   text: "Note",
   photo: "Photo",
   video: "Video",
-  short: "Short",
-  long_video: "Longer video",
+  short: "Reel",
+  long_video: "Video",
   reel: "Reel",
 };
 
@@ -27,4 +27,17 @@ export function formatWhen(iso: string) {
 
 export function plural(count: number, word: string) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
+/** Short relative time: now, 5m, 3h, 2d, then a date. */
+export function ago(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const minutes = Math.round(diff / 60000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d`;
+  return formatWhen(iso).split(",")[0];
 }
