@@ -6,7 +6,7 @@
     "dev": "next dev -p 43921",
     "build": "next build",
     "start": "next start -p 43921",
-    "test:core-rule": "tsx --conditions=react-server scripts/test-core-rule.ts",
+    "test:core-rule": "tsx --conditions=react-server scripts/test-core-rule.ts && tsx --conditions=react-server scripts/test-v3.ts",
     "db:migrate": "tsx --conditions=react-server scripts/migrate.ts",
     "make-founder": "tsx --conditions=react-server scripts/make-founder.ts",
     "db:reset": "tsx --conditions=react-server scripts/reset-db.ts",

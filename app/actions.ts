@@ -10,6 +10,7 @@ import { confirmUploads, createUploadTargets, removeMedia, removeProfileImage, u
 import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { DEFAULT_TABS, normalizeTabs } from "@/lib/tab-bar";
+import { groupTargets, shareToGroup } from "@/lib/groups";
 import {
   setTabBar,
   accountMediaPaths,
@@ -126,7 +127,25 @@ function choiceOf(formData: FormData): RecipientChoice {
     friendIds: ids(formData, "friend"),
     groupIds: ids(formData, "group"),
     listIds: ids(formData, "list"),
+    communityIds: ids(formData, "community"),
   };
+}
+
+/** Share into each picked group. Returns names that worked and reasons for those that didn't. */
+async function shareIntoGroups(userId: number, postId: number, groupIds: number[], note: string) {
+  const done: string[] = [];
+  const failed: { name: string; reason: string }[] = [];
+  const targets = await groupTargets(getDb(), userId, postId);
+  for (const id of groupIds) {
+    const name = targets.find((t) => t.id === id)?.name ?? "A group";
+    try {
+      await shareToGroup(getDb(), userId, id, postId, note);
+      done.push(name);
+    } catch (error) {
+      failed.push({ name, reason: error instanceof Error ? error.message : "Couldn’t share there." });
+    }
+  }
+  return { done, failed };
 }
 
 function shareSummary(created: number, rejected: { name: string; reason: string }[]) {
@@ -242,11 +261,18 @@ export async function createPostAction(formData: FormData) {
       choice: choiceOf(formData),
       note: String(formData.get("note") || ""),
     });
+    const choice = choiceOf(formData);
+    const into = choice.communityIds?.length ? await shareIntoGroups(user.id, result.postId, choice.communityIds, String(formData.get("note") || "")) : null;
     revalidatePath("/timeline");
     revalidatePath("/posts");
-    const extra = result.errors.length ? ` ${result.errors.join(" ")}` : "";
+    if (into && into.done.length && choice.communityIds!.length === 1 && !result.created.length && !result.followers) {
+      redirect(withQuery(`/groups/${choice.communityIds![0]}`, "notice", `Posted in ${into.done[0]}.`));
+    }
+    const grouped = into?.done.length ? ` Posted in ${into.done.join(", ")}.` : "";
+    const groupFails = into?.failed.length ? ` ${into.failed.map((f) => `${f.name} — ${f.reason}`).join(" ")}` : "";
+    const extra = (result.errors.length ? ` ${result.errors.join(" ")}` : "") + grouped + groupFails;
     const toFollowers = result.followers ? "Sent to your followers. " : "";
-    const summary = result.created.length || result.rejected.length || !result.followers ? shareSummary(result.created.length, result.rejected) : "";
+    const summary = result.created.length || result.rejected.length || (!result.followers && !into?.done.length) ? shareSummary(result.created.length, result.rejected) : "";
     redirect(withQuery("/timeline", "notice", `${toFollowers}${summary}${extra}`.trim()));
   });
 }
@@ -257,7 +283,12 @@ export async function shareExistingAction(formData: FormData) {
     const choice = choiceOf(formData);
     // Only the author can send to Followers; shareToFollowers rejects anyone else.
     if (choice.followers) await shareToFollowers(getDb(), postId, user.id, String(formData.get("note") || ""));
+    const into = choice.communityIds?.length ? await shareIntoGroups(user.id, postId, choice.communityIds, String(formData.get("note") || "")) : null;
     const expanded = await expandRecipients(getDb(), user.id, choice);
+    if (!expanded.recipients.length && into) {
+      if (!into.done.length) throw new Error(into.failed.map((f) => `${f.name} — ${f.reason}`).join(" "));
+      redirect(withQuery("/timeline", "notice", `Shared in ${into.done.join(", ")}.`));
+    }
     if (!expanded.recipients.length && choice.followers) {
       revalidatePath("/discover");
       redirect(withQuery("/timeline", "notice", "Sent to your followers."));
@@ -306,7 +337,8 @@ export async function shareSheetAction(postId: number) {
     cover: post.frames[0] ?? null,
     authorName: author?.displayName ?? "Someone",
   };
-  return { post: sheetPost, restricted: Boolean(user.restricted), paused: await getSetting(db, "sharing_paused") === "1", ...targets };
+  const communities = await groupTargets(db, user.id, post.id);
+  return { post: sheetPost, restricted: Boolean(user.restricted), paused: await getSetting(db, "sharing_paused") === "1", communities, ...targets };
 }
 
 export type SheetResult = {
@@ -324,6 +356,7 @@ export async function shareFromSheetAction(input: {
   friendIds: number[];
   groupIds: number[];
   listIds: number[];
+  communityIds?: number[];
   note: string;
 }): Promise<SheetResult> {
   const user = await getCurrentUser();
@@ -342,12 +375,19 @@ export async function shareFromSheetAction(input: {
       return { ok: false, delivered: [], rejected: [], message: error instanceof Error ? error.message : "Nothing was shared." };
     }
   }
+  const into = input.communityIds?.length ? await shareIntoGroups(user.id, Number(input.postId), clean(input.communityIds), String(input.note || "")) : null;
+  const groupDelivered = (into?.done ?? []).map((name) => ({ userId: -2, name, initials: "G", color: "#0ea5a4" }));
+  const groupRejected = into?.failed ?? [];
   const expanded = await expandRecipients(db, user.id, {
     self: Boolean(input.self),
     friendIds: clean(input.friendIds),
     groupIds: clean(input.groupIds),
     listIds: clean(input.listIds),
   });
+  if (!expanded.recipients.length && into) {
+    revalidatePath("/groups");
+    return { ok: groupDelivered.length > 0, delivered: groupDelivered, rejected: groupRejected, message: groupDelivered.length ? `Shared in ${into.done.join(", ")}.` : "Nothing was shared." };
+  }
   if (!expanded.recipients.length) {
     if (input.followers) {
       revalidatePath("/discover");
@@ -375,9 +415,9 @@ export async function shareFromSheetAction(input: {
     }));
     const extra = expanded.errors.map((reason) => ({ name: "Note", reason }));
     return {
-      ok: delivered.length > 0,
-      delivered,
-      rejected: [...result.rejected.map((item) => ({ name: item.name, reason: item.reason })), ...extra],
+      ok: delivered.length + groupDelivered.length > 0,
+      delivered: [...groupDelivered, ...delivered],
+      rejected: [...groupRejected, ...result.rejected.map((item) => ({ name: item.name, reason: item.reason })), ...extra],
       message: shareSummary(result.created.length, result.rejected),
     };
   } catch (error) {

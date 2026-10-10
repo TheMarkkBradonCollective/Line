@@ -12,7 +12,11 @@ export function RecipientPicker({
   lists,
   selected = [],
   followers = null,
+  communities = [],
+  selectedCommunity = null,
 }: {
+  communities?: { id: number; name: string; memberCount: number }[];
+  selectedCommunity?: number | null;
   friends: User[];
   groups: Group[];
   lists: List[];
@@ -37,6 +41,23 @@ export function RecipientPicker({
           </span>
           <input type="checkbox" name="followers" disabled={followers.alreadySent} />
         </label>
+      ) : null}
+      {communities.length ? (
+        <fieldset className="grid grid-cols-[minmax(0,1fr)] gap-2" data-testid="audience-groups">
+          <legend className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-ink-3">Post in a group</legend>
+          {communities.map((group) => (
+            <label key={`c${group.id}`} className="pick flex min-h-[56px] items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2.5 has-[:checked]:border-brand has-[:checked]:bg-brand-soft/60">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0ea5a4] text-white">
+                <Users className="h-4 w-4" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14.5px] font-semibold">{group.name}</span>
+                <span className="block text-[12.5px] text-ink-3">{group.memberCount} members · members see it in the group feed</span>
+              </span>
+              <input type="checkbox" name="community" value={group.id} defaultChecked={selectedCommunity === group.id} />
+            </label>
+          ))}
+        </fieldset>
       ) : null}
       <label className="pick flex min-h-[64px] items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-deep text-white">
@@ -65,7 +86,7 @@ export function RecipientPicker({
 
       {groups.length || lists.length ? (
         <fieldset className="grid grid-cols-[minmax(0,1fr)] gap-2">
-          <legend className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-ink-3">Groups and lists</legend>
+          <legend className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-ink-3">Share circles and lists</legend>
           {groups.map((group) => (
             <label key={`g${group.id}`} className="pick flex min-h-[56px] items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2.5">
               <input type="checkbox" name="group" value={group.id} />

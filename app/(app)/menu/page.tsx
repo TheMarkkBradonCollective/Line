@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { House, Compass, UserRound, BookOpen, Settings, EyeOff, Bell, ChevronRight, Clapperboard, Layers, LifeBuoy, LogOut, Search, Shield, ShieldCheck, Users } from "lucide-react";
+import { UsersRound, MessageCircle, House, Compass, UserRound, BookOpen, Settings, EyeOff, Bell, ChevronRight, Clapperboard, Layers, LifeBuoy, LogOut, Search, Shield, ShieldCheck, Users } from "lucide-react";
 import { logoutAction } from "@/app/actions";
 import { Avatar } from "@/components/avatar";
 import { getDb } from "@/lib/db";
@@ -18,7 +18,9 @@ export default async function MenuPage() {
     { href: "/posts", label: "My posts and who has them", Icon: Layers },
     { href: "/loops", label: "Loops", Icon: Clapperboard },
     { href: "/friends", label: "Friends", Icon: Users },
-    { href: "/friends?tab=groups", label: "Groups and lists", Icon: Users },
+    { href: "/groups", label: "Groups", Icon: UsersRound },
+    { href: "/messages", label: "Messages", Icon: MessageCircle },
+    { href: "/friends?tab=groups", label: "Share circles and lists", Icon: Users },
     { href: "/notifications", label: "Notifications", Icon: Bell },
     { href: "/search", label: "Find people", Icon: Search },
     { href: "/friends?tab=privacy", label: "Privacy and blocking", Icon: ShieldCheck },

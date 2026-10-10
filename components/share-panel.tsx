@@ -64,6 +64,7 @@ export function SharePanel({
   const [friends, setFriends] = useState<Set<number>>(new Set());
   const [groups, setGroups] = useState<Set<number>>(new Set());
   const [lists, setLists] = useState<Set<number>>(new Set());
+  const [communities, setCommunities] = useState<Set<number>>(new Set());
   const [self, setSelf] = useState(false);
   const [toFollowers, setToFollowers] = useState(false);
   const [note, setNote] = useState("");
@@ -99,7 +100,7 @@ export function SharePanel({
     return [...people.values()];
   }, [data, friends, groups, lists]);
 
-  const total = picked.length + (self ? 1 : 0) + (toFollowers ? 1 : 0);
+  const total = picked.length + (self ? 1 : 0) + (toFollowers ? 1 : 0) + communities.size;
   const blocked = Boolean(data?.restricted || data?.paused);
 
   function toggle(set: Set<number>, update: (next: Set<number>) => void, id: number) {
@@ -119,6 +120,7 @@ export function SharePanel({
         friendIds: [...friends],
         groupIds: [...groups],
         listIds: [...lists],
+        communityIds: [...communities],
         note,
       });
       setResult(answer);
@@ -280,6 +282,31 @@ export function SharePanel({
                     </span>
                     <CheckDot on={toFollowers} disabled={data.followers.alreadySent} />
                   </button>
+                ) : null}
+
+                {data.communities.length ? (
+                  <>
+                    <p className="px-2 pb-1 pt-2 text-[12px] font-semibold uppercase tracking-wider text-ink-3">Your groups</p>
+                    <div className="no-scrollbar relative -mx-3 flex gap-2 overflow-x-auto px-5 py-2.5" data-testid="share-communities">
+                      {data.communities.map((group) => {
+                        const on = communities.has(group.id);
+                        return (
+                          <button
+                            key={`c${group.id}`}
+                            type="button"
+                            aria-pressed={on}
+                            disabled={group.hasIt}
+                            onClick={() => toggle(communities, setCommunities, group.id)}
+                            className={cn("chip press shrink-0 disabled:opacity-50", on && "border-brand bg-brand-soft text-brand-strong")}
+                          >
+                            <Users className="h-4 w-4" aria-hidden />
+                            {group.name}
+                            <span className="text-ink-3">{group.hasIt ? "already there" : group.memberCount}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
                 ) : null}
 
                 {data.groups.length || data.lists.length ? (

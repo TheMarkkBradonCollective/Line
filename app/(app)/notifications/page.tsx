@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { UserPlus, BellOff, CheckCheck, Forward, MessageCircle, Play, Repeat2, Send } from "lucide-react";
+import { Users, UserPlus, BellOff, CheckCheck, Forward, MessageCircle, Play, Repeat2, Send } from "lucide-react";
 import { markAllReadAction } from "@/app/actions";
 import { Avatar } from "@/components/avatar";
 import { MediaStill } from "@/components/post-media";
@@ -20,6 +20,8 @@ const KIND = {
   commented: { Icon: MessageCircle, verb: "commented on your post", tint: "bg-[#2d88ff] text-white" },
   replied: { Icon: MessageCircle, verb: "replied to your comment", tint: "bg-[#2d88ff] text-white" },
   followed_you: { Icon: UserPlus, verb: "started following you", tint: "bg-brand text-brand-on" },
+  group_post: { Icon: Users, verb: "posted in a group", tint: "bg-[#0ea5a4] text-white" },
+  added_to_group: { Icon: Users, verb: "added you to a group", tint: "bg-[#0ea5a4] text-white" },
 } as const;
 
 
@@ -38,7 +40,7 @@ function Row({ item }: { item: Item }) {
       <span className="min-w-0 flex-1">
         <span className="block text-[14.5px] leading-snug text-ink">
           <span className="font-semibold">{item.actor_name}</span>{" "}
-          {item.kind === "shared_with_you" ? `shared ${what} with you` : item.kind === "reshared_video" && (item.post_kind === "reel" || item.post_kind === "short") ? "reshared your Loop" : meta.verb}
+          {item.group_id ? item.text.slice(item.actor_name.length + 1).replace(/\.$/, "") : item.kind === "shared_with_you" ? `shared ${what} with you` : item.kind === "reshared_video" && (item.post_kind === "reel" || item.post_kind === "short") ? "reshared your Loop" : meta.verb}
         </span>
         {item.post_body ? <span className="mt-0.5 block truncate text-[13px] text-ink-3">{item.post_body}</span> : null}
         <span className="mt-0.5 block text-[12px] text-ink-3">{formatWhen(item.created_at)}</span>
@@ -55,7 +57,7 @@ function Row({ item }: { item: Item }) {
     </>
   );
   const cls = cn("relative flex min-h-[72px] items-center gap-3 py-3 pl-5 pr-4", !item.read && "bg-brand-soft/50");
-  return item.post_id ? (
+  return item.post_id || item.group_id ? (
     // A plain link on purpose: opening marks the alert read, so it must never be prefetched.
     <a href={`/notifications/${item.id}/open`} className={cn(cls, "text-ink hover:bg-surface-2")}>
       {body}

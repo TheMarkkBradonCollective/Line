@@ -3,6 +3,7 @@ import { isVideoKind } from "./format";
 import { canViewPost, canViewProfile, postAccess } from "./access";
 import type { AddPolicy, Frame, Post, PostKind, PostRow, ResharePolicy, SharePolicy, User, UserRow } from "./types";
 import { mapPost, mapUser } from "./types";
+import { v3Ready } from "./schema-ready";
 
 export { canViewPost, canViewProfile, requireVisible } from "./access";
 export { postAccess };
@@ -190,7 +191,8 @@ export async function canShareWith(db: Db, fromId: number, toId: number, post: P
       return { ok: false as const, reason: "Only friends of the creator can reshare this." };
     }
     if (author.whoCanReshare === "recipients") {
-      if (!await hasShareTo(db, post.id, fromId) && (await postAccess(db, fromId, post)) !== "follower") {
+      const via = await postAccess(db, fromId, post);
+      if (!await hasShareTo(db, post.id, fromId) && via !== "follower" && via !== "group") {
         return { ok: false as const, reason: "You can pass this on only after it was shared with you." };
       }
     }
@@ -302,6 +304,8 @@ export type RecipientChoice = {
   friendIds: number[];
   groupIds: number[];
   listIds: number[];
+  /** Groups (with a shared feed) to post into. Handled by lib/groups shareToGroup after the post exists. */
+  communityIds?: number[];
 };
 
 export async function expandRecipients(db: Db, fromUserId: number, choice: RecipientChoice) {
@@ -421,7 +425,7 @@ export async function publishPost(db: Db,
   },
 ) {
   const { recipients, errors } = await expandRecipients(db, authorId, input.choice);
-  if (recipients.length === 0 && !input.choice.followers) {
+  if (recipients.length === 0 && !input.choice.followers && !input.choice.communityIds?.length) {
     throw new Error("Pick “Just me”, Followers, people, a group, or a list. A post only reaches someone when you share it with them.");
   }
   const postId = await createPost(db, authorId, input);
@@ -870,7 +874,7 @@ const BLOCKED_EITHER_WAY = (column: string) =>
  * Reaction, share and comment counts for many posts in four queries.
  * Callers must have run the access check on every id first.
  */
-async function engagementMany(db: Db, postIds: number[], viewerId: number): Promise<Map<number, Engagement>> {
+export async function engagementMany(db: Db, postIds: number[], viewerId: number): Promise<Map<number, Engagement>> {
   const ids = [...new Set(postIds)];
   const result = new Map<number, Engagement>();
   for (const id of ids) {
@@ -898,7 +902,7 @@ async function engagementMany(db: Db, postIds: number[], viewerId: number): Prom
     >,
     db.all(
       `SELECT c.post_id, COUNT(*) AS c FROM comments c
-       WHERE c.post_id = ANY(?::int[]) AND ${BLOCKED_EITHER_WAY("c.author_id")}
+       WHERE c.post_id = ANY(?::int[]) AND ${(await v3Ready(db)) ? "c.group_id IS NULL" : "true"} AND ${BLOCKED_EITHER_WAY("c.author_id")}
        GROUP BY c.post_id`,
       [ids, viewerId, viewerId],
     ) as Promise<{ post_id: number; c: number }[]>,
@@ -967,14 +971,25 @@ export async function listComments(
   db: Db,
   viewerId: number,
   postId: number,
-  options: { allowStaff?: boolean } = {},
+  options: { allowStaff?: boolean; groupId?: number | null } = {},
 ): Promise<CommentNode[] | null> {
-  if (!(await canViewPost(db, viewerId, postId, options))) return null;
+  const v3 = await v3Ready(db);
+  const groupId = v3 ? (options.groupId ?? null) : null;
+  if (!v3 && options.groupId) return null;
+  if (groupId) {
+    const { canUseGroupThread } = await import("./groups");
+    if (!(await canUseGroupThread(db, viewerId, groupId, postId))) return null;
+  } else {
+    const access = await postAccess(db, viewerId, postId);
+    if (!access || (access === "staff" && !options.allowStaff)) return null;
+    // Someone who only sees the post through a group gets the group thread, not the post's other comments.
+    if (access === "group") return [];
+  }
   const rows = (await db.all(
     `SELECT c.* FROM comments c
-     WHERE c.post_id = ? AND ${BLOCKED_EITHER_WAY("c.author_id")}
+     WHERE c.post_id = ? AND ${groupId ? "c.group_id = ?" : v3 ? "c.group_id IS NULL AND ?::int IS NULL" : "?::int IS NULL"} AND ${BLOCKED_EITHER_WAY("c.author_id")}
      ORDER BY c.created_at ASC, c.id ASC`,
-    [postId, viewerId, viewerId],
+    [postId, groupId, viewerId, viewerId],
   )) as { id: number; post_id: number; author_id: number; parent_id: number | null; body: string; created_at: string }[];
   const authors = await usersByIds(
     db,
@@ -1003,39 +1018,55 @@ export async function addComment(
   db: Db,
   userId: number,
   postId: number,
-  input: { body: string; parentId?: number | null; createdAt?: string },
+  input: { body: string; parentId?: number | null; createdAt?: string; groupId?: number | null },
 ) {
   const user = await mustUser(db, userId);
   if (user.suspended || user.restricted) throw new Error("Your account cannot comment right now.");
-  if (!(await canViewPost(db, userId, postId))) throw new Error("That post isn’t available to you.");
+  const v3 = await v3Ready(db);
+  if (!v3 && input.groupId) throw new Error("Groups aren’t switched on yet.");
+  const groupId = input.groupId ?? null;
+  if (groupId) {
+    const { canUseGroupThread } = await import("./groups");
+    if (!(await canUseGroupThread(db, userId, groupId, postId))) throw new Error("That group thread isn’t available to you.");
+  } else {
+    const access = await postAccess(db, userId, postId);
+    if (!access || access === "staff") throw new Error("That post isn’t available to you.");
+    if (access === "group") throw new Error("Comment in the group thread.");
+  }
   const body = input.body.trim();
   if (!body) throw new Error("Write a comment first.");
   if (body.length > 1000) throw new Error("Keep comments under 1,000 characters.");
   let parentId: number | null = null;
   let parentAuthor: number | null = null;
   if (input.parentId) {
-    const parent = (await db.get("SELECT id, post_id, parent_id, author_id FROM comments WHERE id = ?", [input.parentId])) as
-      | { id: number; post_id: number; parent_id: number | null; author_id: number }
+    const parent = (await db.get(`SELECT id, post_id, parent_id, author_id, ${v3 ? "group_id" : "NULL::int AS group_id"} FROM comments WHERE id = ?`, [input.parentId])) as
+      | { id: number; post_id: number; parent_id: number | null; author_id: number; group_id: number | null }
       | undefined;
-    if (!parent || parent.post_id !== postId) throw new Error("That comment isn’t on this post.");
+    if (!parent || parent.post_id !== postId || (parent.group_id ?? null) !== groupId) throw new Error("That comment isn’t on this post.");
     parentId = parent.parent_id ?? parent.id;
     parentAuthor = parent.author_id;
   }
   const createdAt = input.createdAt ?? new Date().toISOString();
   const post = (await getPost(db, postId))!;
   return db.tx(async (db) => {
-    const id = await db.insert("INSERT INTO comments (post_id, author_id, parent_id, body, created_at) VALUES (?, ?, ?, ?, ?)", [
-      postId,
-      userId,
-      parentId,
-      body,
-      createdAt,
-    ]);
-    const notify = (to: number, kind: string) =>
-      db.run(
-        "INSERT INTO notifications (user_id, actor_id, kind, post_id, share_id, read, created_at) VALUES (?, ?, ?, ?, NULL, 0, ?)",
-        [to, userId, kind, postId, createdAt],
-      );
+    const id = v3
+      ? await db.insert("INSERT INTO comments (post_id, author_id, parent_id, body, group_id, created_at) VALUES (?, ?, ?, ?, ?, ?)", [postId, userId, parentId, body, groupId, createdAt])
+      : await db.insert("INSERT INTO comments (post_id, author_id, parent_id, body, created_at) VALUES (?, ?, ?, ?, ?)", [postId, userId, parentId, body, createdAt]);
+    const notify = async (to: number, kind: string) => {
+      // A group-thread notification only goes to someone who can read that thread.
+      if (groupId) {
+        const { canUseGroupThread } = await import("./groups");
+        if (!(await canUseGroupThread(db, to, groupId, postId))) return;
+      }
+      if (v3) {
+        await db.run(
+          "INSERT INTO notifications (user_id, actor_id, kind, post_id, share_id, group_id, read, created_at) VALUES (?, ?, ?, ?, NULL, ?, 0, ?)",
+          [to, userId, kind, postId, groupId, createdAt],
+        );
+      } else {
+        await db.run("INSERT INTO notifications (user_id, actor_id, kind, post_id, share_id, read, created_at) VALUES (?, ?, ?, ?, NULL, 0, ?)", [to, userId, kind, postId, createdAt]);
+      }
+    };
     if (parentAuthor && parentAuthor !== userId) await notify(parentAuthor, "replied");
     if (post.authorId !== userId && post.authorId !== parentAuthor) await notify(post.authorId, "commented");
     return id;
@@ -1266,9 +1297,12 @@ export async function relationship(db: Db, viewerId: number, otherId: number): P
 }
 
 export async function listNotifications(db: Db, userId: number) {
-  const rows = await db.all(`SELECT n.*, u.display_name AS actor_name, u.username AS actor_username, u.initials AS actor_initials,
-              u.avatar_color AS actor_color, p.kind AS post_kind, p.body AS post_body, p.frames AS post_frames
+  const v3 = await v3Ready(db);
+  const rows = await db.all(`SELECT n.*, ${v3 ? "" : "NULL::int AS group_id,"} u.display_name AS actor_name, u.username AS actor_username, u.initials AS actor_initials,
+              u.avatar_color AS actor_color, p.kind AS post_kind, p.body AS post_body, p.frames AS post_frames,
+              ${v3 ? "g.name" : "NULL::text"} AS group_name
        FROM notifications n
+       ${v3 ? "LEFT JOIN line_groups g ON g.id = n.group_id" : ""}
        JOIN profiles u ON u.id = n.actor_id
        LEFT JOIN posts p ON p.id = n.post_id
        WHERE n.user_id = ?
@@ -1284,6 +1318,8 @@ export async function listNotifications(db: Db, userId: number) {
     post_kind: string | null;
     post_body: string | null;
     post_frames: Frame[] | null;
+    group_id: number | null;
+    group_name: string | null;
     read: number;
     created_at: string;
   }[];
@@ -1292,7 +1328,14 @@ export async function listNotifications(db: Db, userId: number) {
   const blocked = new Set(
     ((await db.all("SELECT blocked_id AS id FROM blocks WHERE blocker_id = ? UNION SELECT blocker_id FROM blocks WHERE blocked_id = ?", [userId, userId])) as { id: number }[]).map((r) => r.id),
   );
-  const visible = await Promise.all(rows.map((row) => (row.post_id ? canViewPost(db, userId, row.post_id) : Promise.resolve(true))));
+  const { canUseGroupThread, membership } = await import("./groups");
+  const visible = await Promise.all(
+    rows.map(async (row) => {
+      if (row.group_id && !(await membership(db, row.group_id, userId))) return false;
+      if (row.group_id && row.post_id && row.kind !== "group_post") return canUseGroupThread(db, userId, row.group_id, row.post_id);
+      return row.post_id ? canViewPost(db, userId, row.post_id) : true;
+    }),
+  );
   const kept = rows
     .filter((row, i) => !blocked.has(row.actor_id) && visible[i])
     .map((row) => row);
@@ -1303,6 +1346,10 @@ export async function listNotifications(db: Db, userId: number) {
     if (row.kind === "commented") text = `${row.actor_name} commented on your post.`;
     if (row.kind === "replied") text = `${row.actor_name} replied to your comment.`;
     if (row.kind === "followed_you") text = `${row.actor_name} started following you.`;
+    if (row.kind === "group_post") text = `${row.actor_name} posted in ${row.group_name ?? "a group"}.`;
+    if (row.kind === "added_to_group") text = `${row.actor_name} added you to ${row.group_name ?? "a group"}.`;
+    if (row.group_id && row.kind === "commented") text = `${row.actor_name} commented on your post in ${row.group_name ?? "a group"}.`;
+    if (row.group_id && row.kind === "replied") text = `${row.actor_name} replied to you in ${row.group_name ?? "a group"}.`;
     return { ...row, text };
   });
 }
@@ -1313,10 +1360,10 @@ export async function unreadCount(db: Db, userId: number) {
 }
 
 export async function markNotificationRead(db: Db, userId: number, notificationId: number) {
-  const row = await db.get("SELECT id, post_id FROM notifications WHERE id = ? AND user_id = ?", [notificationId, userId]) as { id: number; post_id: number | null } | undefined;
+  const row = await db.get(`SELECT id, post_id, ${(await v3Ready(db)) ? "group_id" : "NULL::int AS group_id"}, kind, actor_id FROM notifications WHERE id = ? AND user_id = ?`, [notificationId, userId]) as { id: number; post_id: number | null; group_id: number | null; kind: string; actor_id: number } | undefined;
   if (!row) return null;
   await db.run("UPDATE notifications SET read = 1 WHERE id = ?", [notificationId]);
-  return row.post_id;
+  return row;
 }
 
 export async function markAllNotificationsRead(db: Db, userId: number) {

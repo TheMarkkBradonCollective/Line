@@ -6,7 +6,8 @@ export const TAB_OPTIONS = {
   friends: { href: "/friends", label: "Friends" },
   profile: { href: "/profile", label: "Profile" },
   alerts: { href: "/notifications", label: "Alerts" },
-  groups: { href: "/friends?tab=groups", label: "Groups" },
+  groups: { href: "/groups", label: "Groups" },
+  messages: { href: "/messages", label: "Messages" },
   posts: { href: "/posts", label: "My Posts" },
 } as const;
 

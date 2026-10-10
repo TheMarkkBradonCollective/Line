@@ -7,6 +7,9 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const user = await getCurrentUser();
   if (!user) redirect("/");
   const { id } = await context.params;
-  const postId = await markNotificationRead(getDb(), user.id, Number(id));
-  redirect(postId ? `/post/${postId}` : "/notifications");
+  const row = await markNotificationRead(getDb(), user.id, Number(id));
+  if (row?.group_id && row.post_id) redirect(`/groups/${row.group_id}/post/${row.post_id}`);
+  if (row?.group_id) redirect(`/groups/${row.group_id}`);
+  if (row?.kind === "message" ) redirect(`/messages`);
+  redirect(row?.post_id ? `/post/${row.post_id}` : "/notifications");
 }

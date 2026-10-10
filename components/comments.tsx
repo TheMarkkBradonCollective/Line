@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { addCommentAction } from "@/app/actions";
+import { addGroupCommentAction } from "@/app/group-actions";
 import { Avatar } from "@/components/avatar";
 import { ago } from "@/lib/format";
 import type { CommentNode } from "@/lib/social";
 import type { User } from "@/lib/types";
 
-function CommentForm({ postId, viewer, parentId, placeholder, autoFocus }: { postId: number; viewer: User; parentId?: number; placeholder: string; autoFocus?: boolean }) {
+function CommentForm({ postId, viewer, parentId, placeholder, autoFocus, groupId }: { postId: number; viewer: User; parentId?: number; placeholder: string; autoFocus?: boolean; groupId?: number | null }) {
   return (
-    <form action={addCommentAction} className="flex items-start gap-2.5" id={parentId ? `reply-${parentId}` : "comment-box"}>
+    <form action={groupId ? addGroupCommentAction : addCommentAction} className="flex items-start gap-2.5" id={parentId ? `reply-${parentId}` : "comment-box"}>
       <input type="hidden" name="postId" value={postId} />
+      {groupId ? <input type="hidden" name="groupId" value={groupId} /> : null}
       {parentId ? <input type="hidden" name="parentId" value={parentId} /> : null}
       <Avatar initials={viewer.initials} color={viewer.avatarColor} src={viewer.avatarUrl} name={viewer.displayName} size={parentId ? "xs" : "sm"} />
       <label className="sr-only" htmlFor={parentId ? `reply-body-${parentId}` : "comment-body"}>
@@ -33,7 +35,7 @@ function CommentForm({ postId, viewer, parentId, placeholder, autoFocus }: { pos
   );
 }
 
-function Bubble({ comment, postId, replyTo }: { comment: CommentNode; postId: number; replyTo: number | null }) {
+function Bubble({ comment, base, replyTo }: { comment: CommentNode; base: string; replyTo: number | null }) {
   return (
     <div id={`c-${comment.id}`} className="scroll-mt-24">
       <div className="flex items-start gap-2.5">
@@ -49,7 +51,7 @@ function Bubble({ comment, postId, replyTo }: { comment: CommentNode; postId: nu
           </div>
           <p className="mt-1 flex items-center gap-3 pl-3 text-[12px] font-semibold text-ink-3">
             <time dateTime={comment.createdAt}>{ago(comment.createdAt)}</time>
-            <Link href={`/post/${postId}?reply=${replyTo ?? comment.id}#reply-${replyTo ?? comment.id}`} className="hover:underline" scroll={false}>
+            <Link href={`${base}?reply=${replyTo ?? comment.id}#reply-${replyTo ?? comment.id}`} className="hover:underline" scroll={false}>
               Reply
             </Link>
           </p>
@@ -66,34 +68,41 @@ export function Comments({
   viewer,
   replyingTo,
   canComment,
+  groupId = null,
+  groupName,
 }: {
+  groupId?: number | null;
+  groupName?: string;
   postId: number;
   comments: CommentNode[];
   viewer: User;
   replyingTo: number | null;
   canComment: boolean;
 }) {
+  const base = groupId ? `/groups/${groupId}/post/${postId}` : `/post/${postId}`;
   const total = comments.reduce((sum, item) => sum + 1 + item.replies.length, 0);
   return (
     <section id="comments" className="scroll-mt-20 px-4 pb-4 pt-2" aria-labelledby="comments-title">
       <h2 id="comments-title" className="sr-only">
         Comments ({total})
       </h2>
-      <p className="mb-3 text-[12.5px] text-ink-3">Only people this post was shared with can see these comments.</p>
+      <p className="mb-3 text-[12.5px] text-ink-3" data-testid={groupId ? "group-thread-note" : undefined}>
+        {groupId ? `Group thread · only current members of ${groupName ?? "this group"} can see these comments.` : "Only people this post was shared with can see these comments."}
+      </p>
       <ul className="grid grid-cols-[minmax(0,1fr)] gap-3.5">
         {comments.map((comment) => (
           <li key={comment.id}>
-            <Bubble comment={comment} postId={postId} replyTo={null} />
+            <Bubble comment={comment} base={base} replyTo={null} />
             {comment.replies.length || replyingTo === comment.id ? (
               <ul className="ml-[46px] mt-2.5 grid grid-cols-[minmax(0,1fr)] gap-2.5 border-l-2 border-line/70 pl-3">
                 {comment.replies.map((reply) => (
                   <li key={reply.id}>
-                    <Bubble comment={reply} postId={postId} replyTo={comment.id} />
+                    <Bubble comment={reply} base={base} replyTo={comment.id} />
                   </li>
                 ))}
                 {canComment && replyingTo === comment.id ? (
                   <li>
-                    <CommentForm postId={postId} viewer={viewer} parentId={comment.id} placeholder={`Reply to ${comment.author.displayName.split(" ")[0]}…`} autoFocus />
+                    <CommentForm groupId={groupId} postId={postId} viewer={viewer} parentId={comment.id} placeholder={`Reply to ${comment.author.displayName.split(" ")[0]}…`} autoFocus />
                   </li>
                 ) : null}
               </ul>
@@ -104,7 +113,7 @@ export function Comments({
       {comments.length === 0 ? <p className="py-2 text-[14px] text-ink-3">No comments yet.</p> : null}
       {canComment ? (
         <div className="mt-4">
-          <CommentForm postId={postId} viewer={viewer} placeholder="Write a comment…" />
+          <CommentForm groupId={groupId} postId={postId} viewer={viewer} placeholder={groupId ? "Comment in the group…" : "Write a comment…"} />
         </div>
       ) : null}
     </section>

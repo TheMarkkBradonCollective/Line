@@ -4,7 +4,7 @@ Plain-language rules. The app enforces exactly these on the server; `npm run tes
 
 ## No share, no see
 
-- You only see a post if you made it, someone shared it with you, or its author sent it to their Followers and you follow them.
+- You only see a post if you made it, someone shared it with you, it was shared into a group you were already in, or its author sent it to their Followers and you follow them.
 - There is no algorithm and no public feed. Search finds people, never posts.
 - Loops (short vertical videos) follow the same rule. The Loops tab only plays Loops that reached you, plus your own.
 - The rule is checked on the server for every page, link, photo, video, comment, reaction, notification and count. A direct link to a post you weren’t sent shows “not found”.
@@ -34,10 +34,20 @@ Plain-language rules. The app enforces exactly these on the server; `npm run tes
 - If a post reached you (by share or as a follower), you can pass it on to your friends and groups, unless the author turned resharing off. Each person can pass it on to their friends, and so on.
 - Shares you already received stay with you, even if the sender later unfriends you.
 
-## Groups and lists
+## Groups
 
-- Groups and lists are yours and private. Sharing to one sends a copy to each member who is your friend at that moment.
-- People added to a group later don’t get posts shared to it before they joined. People removed keep what they already got.
+- A group is a set of people with its own feed. Only members see the group, its members and its feed.
+- The person who starts a group is its owner. Owners and admins can add people, but only from their own friends. They can also remove members, rename the group and set its photo. The owner can make admins and delete the group. Anyone can leave.
+- Members can post straight into the group from Create, or share a post they can see into it. Anyone except the author needs the author’s resharing permission to do that.
+- A post shared into a group is visible to the people who were members at that moment, for as long as they stay. Someone who joins later only sees posts shared after they joined. Someone who leaves or is removed loses what they could see through the group.
+- Comments made in a group form a group thread. Only current members who can see the post read and write it. It is separate from the post’s other comments, and people who only see the post through the group don’t see those other comments.
+- A member can pass a group post on to their own friends if the author allows resharing. That lands in the friend’s Home as a normal share, and never carries the group thread.
+- You can mute a group to stop alerts for new posts. Deleting a group removes its feed and threads. The posts stay with their authors and anyone they were shared with directly.
+
+## Share circles and lists
+
+- Share circles and lists are your own private shortcuts for sharing. Sharing to one sends a copy to each member who is your friend at that moment.
+- People added to a circle later don’t get posts shared to it before they joined. People removed keep what they already got.
 
 ## Likes, dislikes and hiding
 
