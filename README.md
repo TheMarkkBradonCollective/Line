@@ -6,6 +6,8 @@ Wired like Facebook, styled like Vine, run share-first.
 
 Flow: **Create → Share → Receive → Reshare → Continue.**
 
+**The full rules in plain language: [docs/RULES.md](docs/RULES.md)** (also in the app under Menu → How LINE works).
+
 ## Run the website
 
 ```bash
@@ -96,42 +98,9 @@ The script builds a throwaway SQLite database and asserts:
 - Staff grants are explicit. Removing Moderator’s `review_reports` grant closes that queue even though the role title stays. Administrator does not have platform ownership. Founder does.
 - Audit rows cannot be updated or deleted.
 
-## Demo logins
+## Test data
 
-People:
-
-| Username | You’ll see |
-| --- | --- |
-| `jordan` | On his own profile, every post including the Saturday kitchen peaches (two photos) and timer reel. In his feed: the river note Marcus sent only to Jordan, Sam’s loaf note after Marcus passed it on, Mina’s rooftop photo after Alex passed it on, Marcus’s bridge photo and gate toast, a creek video from Theo, and a skate loop from Noah. Not the peaches. |
-| `alex` | The peaches Jordan sent to the Saturday kitchen group, Priya’s buns, Mina’s dusk loop and rooftop photo, and Marcus’s market coffee. Not the river note. Not Riley’s market photo until someone shares it. |
-| `sam` | The peaches, Priya’s buns, and Marcus’s porch-rain reel. Not the river note. Not the loaf note (Sam sent that to Marcus). |
-| `marcus` | Best account for screenshots. Home: Mina’s rooftop photo at the end of a three-person chain (Mina → Alex → Jordan → Marcus) with comments and replies, Priya’s three-photo buns passed on by Sam, Jordan’s sauce video, pancake reel, and knife note, Theo’s rapids reel and camp photos, Sam’s loaf note and crackle video, Riley’s market photo, and his own posts (bridge photos, coffee, porch reel, ride video, river note, gate note). `/u/jordan` shows a partial set; `/u/mina` (not a friend) shows only the rooftop; `/u/noah` (not a friend) shows none. |
-| `riley` | Only Riley’s own market photo and hall reel. Nobody has shared anything with Riley, who isn’t accepting shares. |
-| `noah` | Riley’s hall reel, plus Noah’s own bowl reel. |
-| `mina` | Only her own posts (dusk reel, lanterns, rooftop) until someone shares with her. Open `/u/marcus` to see an empty-but-public profile. |
-| `theo` | Marcus’s bridge photos and ride video, plus his own creek video, rapids reel, and camp photos. |
-| `priya` | Only her own bun photos until someone shares with her. |
-
-Staff, one account per role. The desk opens from permission grants, not from the title.
-
-| Username | Role | What opens |
-| --- | --- | --- |
-| `casey` | User Support | Accounts, reported-content lookup, tickets. No report queue, no suspend. |
-| `quinn` | Moderator | Report queue, hide/restore. Cannot restrict or suspend. |
-| `avery` | Senior Moderator | Moderator tools plus restrict. Cannot suspend. |
-| `morgan` | Manager | Above, plus suspend, tickets, and the audit log. The seeded spam case sits in this queue. |
-| `blake` | Director | Above, plus the staff directory and platform settings. Cannot create accounts or edit grants. |
-| `rowan` | Administrator | Privileged staff: create accounts, edit role labels and grants, security, financial note, emergency pause. **No ownership panel.** |
-| `sage` | Founder | Every grant, including platform ownership. |
-
-Escalation is Moderator → Senior Moderator → Manager → Director → Administrator or Founder. A director case can be sent to Administrator (platform) or Founder (ownership).
-
-Seeded story, if you want to click it:
-
-1. Sign in as Jordan. The river card says Marcus shared it. Riley’s market photo is not there.
-2. Sign out. Sign in as Alex. The river note is absent. The market photo is absent too.
-3. Sign in as Marcus. Open the market photo, choose Share, and send it only to Alex. Alex has it. Sam and Jordan still do not.
-4. Sign in as `casey`, then `rowan`, then `sage`, and compare which Staff panels exist.
+The live database starts empty: real sign-ups only, no demo accounts. The sample people and posts in `scripts/fixtures.ts` are only loaded into the throwaway database that `npm run test:core-rule` creates.
 
 ## Build the Android debug APK
 

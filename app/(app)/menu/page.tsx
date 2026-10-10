@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Bell, ChevronRight, Clapperboard, Layers, LifeBuoy, LogOut, Search, Shield, ShieldCheck, Users } from "lucide-react";
+import { BookOpen, Settings, EyeOff, Bell, ChevronRight, Clapperboard, Layers, LifeBuoy, LogOut, Search, Shield, ShieldCheck, Users } from "lucide-react";
 import { logoutAction } from "@/app/actions";
 import { Avatar } from "@/components/avatar";
 import { getDb } from "@/lib/db";
@@ -19,6 +19,9 @@ export default async function MenuPage() {
     { href: "/notifications", label: "Notifications", Icon: Bell },
     { href: "/search", label: "Find people", Icon: Search },
     { href: "/friends?tab=privacy", label: "Privacy and blocking", Icon: ShieldCheck },
+    { href: "/hidden", label: "Hidden people and posts", Icon: EyeOff },
+    { href: "/settings", label: "Settings", Icon: Settings },
+    { href: "/how-line-works", label: "How LINE works", Icon: BookOpen },
     { href: "/profile?tab=edit", label: "Help and support", Icon: LifeBuoy },
     ...(staff ? [{ href: "/staff", label: "Staff desk", Icon: Shield }] : []),
   ];

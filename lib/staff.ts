@@ -8,6 +8,7 @@ import {
   type Queue,
   type Role,
 } from "./permissions";
+import { canViewPost, canViewProfile } from "./access";
 import { getPost, getUserById, getUserByUsername, hasPermission, listPermissions, listUsers, mustUser } from "./social";
 import { mapUser, type User, type UserRow } from "./types";
 
@@ -141,6 +142,12 @@ export async function createReport(db: Db,
   const categories = new Set(["harassment", "spam", "abuse", "other"]);
   if (!types.has(input.targetType)) throw new Error("Choose what you are reporting.");
   if (!categories.has(input.category)) throw new Error("Choose a reason.");
+  // You can only report what you can actually see: a post that reached you, or a profile open to you.
+  if (input.targetType === "post" || input.targetType === "video") {
+    if (!(await canViewPost(db, reporterId, input.targetId))) throw new Error("That post isn’t available to you.");
+  } else if (input.targetType === "profile" || input.targetType === "account") {
+    if (!(await getUserById(db, input.targetId)) || !(await canViewProfile(db, reporterId, input.targetId))) throw new Error("That profile isn’t available.");
+  }
   const now = new Date().toISOString();
   return db.insert(`INSERT INTO reports
         (reporter_id, target_type, target_id, category, details, status, queue, created_at, updated_at)

@@ -561,8 +561,9 @@ export async function getHomeFeed(db: Db, userId: number): Promise<TimelineItem[
   const allowed = await Promise.all(
     items.map((item) => canViewPost(db, userId, { id: item.postId, authorId: item.author.id, hidden: 0 })),
   );
+  const hidden = await hiddenSets(db, userId);
   return items
-    .filter((_, index) => allowed[index])
+    .filter((item, index) => allowed[index] && (item.ownPost || (!hidden.posts.has(item.postId) && !hidden.authors.has(item.author.id))))
     .sort((a, b) => b.sharedAt.localeCompare(a.sharedAt) || b.postId - a.postId);
 }
 
@@ -892,7 +893,7 @@ async function engagementMany(db: Db, postIds: number[], viewerId: number): Prom
     db.all("SELECT post_id, kind FROM reactions WHERE post_id = ANY(?::int[]) AND user_id = ?", [ids, viewerId]) as Promise<
       { post_id: number; kind: ReactionKind }[]
     >,
-    db.all("SELECT post_id, COUNT(*) AS c FROM shares WHERE post_id = ANY(?::int[]) GROUP BY post_id", [ids]) as Promise<
+    db.all("SELECT post_id, COUNT(*) AS c FROM shares WHERE post_id = ANY(?::int[]) AND to_user_id <> from_user_id GROUP BY post_id", [ids]) as Promise<
       { post_id: number; c: number }[]
     >,
     db.all(
@@ -1127,7 +1128,6 @@ export async function profileStats(db: Db, viewerId: number, personId: number) {
     posts: posts.length,
     shares: sharesRow.c,
     mutual: mutual.length,
-    unseen: Math.max(0, totalRow.c - posts.length),
   };
 }
 
@@ -1287,7 +1287,16 @@ export async function listNotifications(db: Db, userId: number) {
     read: number;
     created_at: string;
   }[];
-  return rows.map((row) => {
+  // A notification never shows a post the viewer can no longer see (deleted, hidden by moderation,
+  // unfollowed, blocked), and nothing from someone across a block.
+  const blocked = new Set(
+    ((await db.all("SELECT blocked_id AS id FROM blocks WHERE blocker_id = ? UNION SELECT blocker_id FROM blocks WHERE blocked_id = ?", [userId, userId])) as { id: number }[]).map((r) => r.id),
+  );
+  const visible = await Promise.all(rows.map((row) => (row.post_id ? canViewPost(db, userId, row.post_id) : Promise.resolve(true))));
+  const kept = rows
+    .filter((row, i) => !blocked.has(row.actor_id) && visible[i])
+    .map((row) => row);
+  return kept.map((row) => {
     let text = `${row.actor_name} shared something with you.`;
     if (row.kind === "shared_onward") text = `${row.actor_name} shared your post onward.`;
     if (row.kind === "reshared_video") text = `${row.actor_name} reshared your video.`;
@@ -1529,6 +1538,8 @@ export async function getDiscover(db: Db, viewerId: number): Promise<DiscoverIte
      JOIN follows f ON f.followee_id = fs.from_user_id AND f.follower_id = ?
      JOIN posts p ON p.id = fs.post_id AND p.author_id = fs.from_user_id
      WHERE p.hidden = 0
+       AND NOT EXISTS (SELECT 1 FROM hidden_posts h WHERE h.user_id = f.follower_id AND h.post_id = p.id)
+       AND NOT EXISTS (SELECT 1 FROM hidden_authors h WHERE h.user_id = f.follower_id AND h.author_id = p.author_id)
      ORDER BY fs.created_at DESC, p.id DESC
      LIMIT 100`,
     [viewerId],
@@ -1565,4 +1576,72 @@ export async function setProfileImage(db: Db, userId: number, which: "avatar" | 
   const before = (await db.get(`SELECT ${column} AS path FROM profiles WHERE id = ?`, [userId])) as { path: string | null } | undefined;
   await db.run(`UPDATE profiles SET ${column} = ? WHERE id = ?`, [path, userId]);
   return before?.path ?? null;
+}
+
+// ── Dislike / hide (private to the viewer; not a block, nobody is notified) ──
+
+async function hiddenSets(db: Db, userId: number) {
+  const [posts, authors] = await Promise.all([
+    db.all("SELECT post_id FROM hidden_posts WHERE user_id = ?", [userId]) as Promise<{ post_id: number }[]>,
+    db.all("SELECT author_id FROM hidden_authors WHERE user_id = ?", [userId]) as Promise<{ author_id: number }[]>,
+  ]);
+  return { posts: new Set(posts.map((r) => r.post_id)), authors: new Set(authors.map((r) => r.author_id)) };
+}
+
+/** Dislike: hides this post from the viewer's Home and Discover. Only on posts they can see, never their own. */
+export async function dislikePost(db: Db, userId: number, postId: number) {
+  const post = await getPost(db, postId);
+  if (!post || !(await canViewPost(db, userId, post))) throw new Error("That post isn’t available to you.");
+  if (post.authorId === userId) throw new Error("You can’t dislike your own post.");
+  await db.run("INSERT INTO hidden_posts (user_id, post_id) VALUES (?, ?) ON CONFLICT DO NOTHING", [userId, postId]);
+  return post.authorId;
+}
+
+export async function undoDislike(db: Db, userId: number, postId: number) {
+  await db.run("DELETE FROM hidden_posts WHERE user_id = ? AND post_id = ?", [userId, postId]);
+}
+
+export async function hideAuthor(db: Db, userId: number, authorId: number) {
+  if (userId === authorId) throw new Error("You can’t hide yourself.");
+  await mustUser(db, authorId);
+  await db.run("INSERT INTO hidden_authors (user_id, author_id) VALUES (?, ?) ON CONFLICT DO NOTHING", [userId, authorId]);
+}
+
+export async function unhideAuthor(db: Db, userId: number, authorId: number) {
+  await db.run("DELETE FROM hidden_authors WHERE user_id = ? AND author_id = ?", [userId, authorId]);
+}
+
+export async function listHidden(db: Db, userId: number) {
+  const people = (await db.all(
+    "SELECT p.* FROM hidden_authors h JOIN profiles p ON p.id = h.author_id WHERE h.user_id = ? ORDER BY h.created_at DESC",
+    [userId],
+  )) as UserRow[];
+  const posts = (await db.all(
+    `SELECT p.id, p.body, p.kind, p.author_id, h.created_at FROM hidden_posts h JOIN posts p ON p.id = h.post_id
+     WHERE h.user_id = ? ORDER BY h.created_at DESC LIMIT 100`,
+    [userId],
+  )) as { id: number; body: string; kind: string; author_id: number; created_at: string }[];
+  const authors = await usersByIds(db, [...new Set(posts.map((p) => p.author_id))]);
+  const byId = new Map(authors.map((a) => [a.id, a]));
+  return {
+    people: people.map(mapUser),
+    posts: posts.map((p) => ({ id: p.id, body: p.body, kind: p.kind, author: byId.get(p.author_id) ?? null, at: p.created_at })),
+  };
+}
+
+/** Files to remove when an account is deleted. */
+export async function accountMediaPaths(db: Db, userId: number) {
+  const rows = (await db.all("SELECT frames FROM posts WHERE author_id = ?", [userId])) as { frames: Frame[] | null }[];
+  const media = rows.flatMap((row) => (row.frames ?? []).map((frame) => frame.path));
+  const me = (await db.get("SELECT avatar_path, cover_path FROM profiles WHERE id = ?", [userId])) as
+    | { avatar_path: string | null; cover_path: string | null }
+    | undefined;
+  return { media, profile: [me?.avatar_path ?? null, me?.cover_path ?? null].filter(Boolean) as string[] };
+}
+
+/** Removes the profile row; every table referencing it cascades. Returns the Supabase Auth id to delete. */
+export async function deleteProfile(db: Db, userId: number) {
+  const row = (await db.get("SELECT auth_id FROM profiles WHERE id = ?", [userId])) as { auth_id: string | null } | undefined;
+  await db.run("DELETE FROM profiles WHERE id = ?", [userId]);
+  return row?.auth_id ?? null;
 }

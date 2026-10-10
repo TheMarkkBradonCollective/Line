@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Smartphone } from "lucide-react";
 import { ANDROID_RELEASE } from "@/lib/app-release";
-import { signInAction, signUpAction } from "@/app/actions";
+import { forgotPasswordAction, signInAction, signUpAction } from "@/app/actions";
 import { Avatar } from "@/components/avatar";
 import { Notice } from "@/components/notice";
 import { getDb } from "@/lib/db";
@@ -25,6 +25,7 @@ export default async function HomePage({
   // Open unless a staff member closes sign-ups from the console.
   const signupsOpen = (await getSetting(db, "signups_open")) !== "0";
   const signup = query.mode === "signup";
+  const forgot = query.mode === "forgot";
 
   return (
     <main className="min-h-dvh lg:grid lg:grid-cols-[1.1fr_1fr]">
@@ -92,7 +93,15 @@ export default async function HomePage({
           </Link>
         </div>
 
-        {signup ? (
+        {forgot ? (
+          <form action={forgotPasswordAction} className="grid gap-3" data-testid="forgot-form">
+            <h2 className="page-title">Reset your password</h2>
+            <p className="-mt-1 text-sm text-ink-2">Enter your email and we’ll send you a link to set a new password.</p>
+            <Field label="Email" name="email" type="email" autoComplete="email" placeholder="you@example.com" required />
+            <SubmitButton>Send reset link</SubmitButton>
+            <Link href="/" className="text-[13px] font-semibold text-brand-strong hover:underline">Back to sign in</Link>
+          </form>
+        ) : signup ? (
           signupsOpen ? (
             <form action={signUpAction} className="grid gap-3" data-testid="signup-form">
               <h2 className="page-title">Join LINE</h2>
@@ -113,6 +122,7 @@ export default async function HomePage({
             <Field label="Email" name="email" type="email" autoComplete="email" placeholder="you@example.com" required />
             <Field label="Password" name="password" type="password" autoComplete="current-password" required />
             <SubmitButton>Sign in</SubmitButton>
+            <Link href="/?mode=forgot" className="w-fit text-[13px] font-semibold text-brand-strong hover:underline">Forgot password?</Link>
             <p className="text-[13px] text-ink-3">
               New here?{" "}
               <Link href="/?mode=signup" className="font-semibold text-brand-strong hover:underline">

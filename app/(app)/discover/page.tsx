@@ -46,7 +46,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
       {items.length ? (
         <div data-testid="discover-feed">
           {items.map((item) => (
-            <PostCard key={item.post.id} item={{ ...item, reachedBy: null }} author={item.author} viewerId={user.id} />
+            <PostCard key={item.post.id} item={{ ...item, reachedBy: null }} author={item.author} viewerId={user.id} allowDislike />
           ))}
         </div>
       ) : (

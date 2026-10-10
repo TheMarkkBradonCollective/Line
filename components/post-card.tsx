@@ -9,14 +9,14 @@ import type { ProfilePost } from "@/lib/social";
 import type { User } from "@/lib/types";
 
 /** A post on a profile. Same look as the feed; only rendered for posts that passed the access check. */
-export function PostCard({ item, author, viewerId }: { item: ProfilePost; author: User; viewerId: number }) {
+export function PostCard({ item, author, viewerId, allowDislike = false }: { item: ProfilePost; author: User; viewerId: number; allowDislike?: boolean }) {
   const { post } = item;
   const reel = post.kind === "reel" || post.kind === "short";
   const href = reel ? `/reels/${post.id}` : `/post/${post.id}`;
   const longText = post.kind === "text" && post.body.length > 160;
   const own = author.id === viewerId;
   return (
-    <article className="mb-2 bg-surface md:mb-4 md:overflow-hidden md:rounded-[24px] md:border md:border-line/60 md:shadow-e1" data-testid="profile-post">
+    <article className="mb-2 bg-surface md:mb-4 md:overflow-hidden md:rounded-[24px] md:border md:border-line/60 md:shadow-e1" data-testid="profile-post" data-author={author.id}>
       {item.reachedBy && item.reachedBy.id !== author.id ? (
         <div className="flex items-center gap-2 border-b border-line/60 px-4 py-2.5 text-[13px] text-ink-2">
           <Avatar initials={item.reachedBy.initials} color={item.reachedBy.avatarColor} src={item.reachedBy.avatarUrl} name={item.reachedBy.displayName} size="xs" />
@@ -48,7 +48,7 @@ export function PostCard({ item, author, viewerId }: { item: ProfilePost; author
           <PostMedia postId={post.id} kind={post.kind} body={post.body} frames={post.frames} />
         </Link>
       ) : null}
-      <PostActions postId={post.id} reactions={item.reactions} commentCount={item.commentCount} shareCount={item.shareCount} commentHref={`/post/${post.id}#comments`} />
+      <PostActions postId={post.id} reactions={item.reactions} commentCount={item.commentCount} shareCount={item.shareCount} commentHref={`/post/${post.id}#comments`} dislike={allowDislike && !own ? { authorId: author.id, authorName: author.displayName } : null} />
     </article>
   );
 }

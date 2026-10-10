@@ -20,6 +20,10 @@ export async function GET(request: NextRequest) {
   } else if (tokenHash && type) {
     ok = !(await supabase.auth.verifyOtp({ type, token_hash: tokenHash })).error;
   }
+  const next = url.searchParams.get("next");
+  if (ok && (next === "/reset-password" || type === "recovery")) {
+    return NextResponse.redirect(new URL("/reset-password", url.origin));
+  }
   const target = new URL(ok ? "/timeline" : "/", url.origin);
   target.searchParams.set(
     ok ? "notice" : "error",

@@ -6,6 +6,7 @@ import { MessageCircle, ThumbsUp } from "lucide-react";
 import { reactAction } from "@/app/actions";
 import { REACTIONS, ReactionDisc, reactionMeta } from "@/components/reactions";
 import { ShareButton } from "@/components/share-button";
+import { DislikeButton } from "@/components/dislike-button";
 import type { ReactionKind, ReactionSummary } from "@/lib/social";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +39,10 @@ export function PostActions({
   commentHref,
   showSummary = true,
   canShare = true,
+  dislike,
 }: {
+  /** Shown on other people's posts in Home and Discover. */
+  dislike?: { authorId: number; authorName: string } | null;
   postId: number;
   reactions: ReactionSummary;
   commentCount: number;
@@ -182,6 +186,7 @@ export function PostActions({
           Comment
         </Link>
         {canShare ? <ShareButton postId={postId} count={shareCount} variant="bar" /> : null}
+        {dislike ? <DislikeButton postId={postId} authorId={dislike.authorId} authorName={dislike.authorName} /> : null}
       </div>
     </div>
   );
