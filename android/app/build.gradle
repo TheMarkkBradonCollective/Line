@@ -8,7 +8,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +16,24 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Release signing reads a properties file kept OUTSIDE the repo.
+    // Point LINE_KEYSTORE_PROPERTIES at it (keys: storeFile, storePassword, keyAlias, keyPassword).
+    def ksPropsPath = System.getenv("LINE_KEYSTORE_PROPERTIES")
+    def ksProps = new Properties()
+    if (ksPropsPath && file(ksPropsPath).exists()) { file(ksPropsPath).withInputStream { ksProps.load(it) } }
+    signingConfigs {
+        if (ksProps.getProperty("storeFile")) {
+            release {
+                storeFile file(ksProps.getProperty("storeFile"))
+                storePassword ksProps.getProperty("storePassword")
+                keyAlias ksProps.getProperty("keyAlias")
+                keyPassword ksProps.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
         release {
+            if (ksProps.getProperty("storeFile")) { signingConfig signingConfigs.release }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

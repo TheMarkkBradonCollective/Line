@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Smartphone } from "lucide-react";
+import { ANDROID_RELEASE } from "@/lib/app-release";
 import { signInAction, signUpAction } from "@/app/actions";
 import { Avatar } from "@/components/avatar";
 import { Notice } from "@/components/notice";
@@ -48,6 +49,14 @@ export default async function HomePage({
               </li>
             ))}
           </ol>
+          <Link
+            href="/download"
+            className="press mt-6 inline-flex h-11 w-fit items-center gap-2 rounded-full bg-black/25 px-5 text-[14px] font-semibold text-white ring-1 ring-white/30 backdrop-blur hover:bg-black/35"
+            data-testid="get-android-app"
+          >
+            <Smartphone className="h-4 w-4" aria-hidden /> Get the Android app
+            <span className="text-white/70">v{ANDROID_RELEASE.version}</span>
+          </Link>
           {current && !current.suspended ? (
             <Link
               href="/timeline"
