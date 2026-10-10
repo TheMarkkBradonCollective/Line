@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, CircleAlert, Layers, Lock, Search, Send, UserRound, Users, X } from "lucide-react";
+import { Check, CircleAlert, Layers, Lock, Rss, Search, Send, UserRound, Users, X } from "lucide-react";
 import { shareFromSheetAction, shareSheetAction, type SheetResult } from "@/app/actions";
 import { Avatar, AvatarStack } from "@/components/avatar";
 import { MediaStill } from "@/components/post-media";
@@ -65,6 +65,7 @@ export function SharePanel({
   const [groups, setGroups] = useState<Set<number>>(new Set());
   const [lists, setLists] = useState<Set<number>>(new Set());
   const [self, setSelf] = useState(false);
+  const [toFollowers, setToFollowers] = useState(false);
   const [note, setNote] = useState("");
   const [result, setResult] = useState<SheetResult | null>(null);
   const [pending, startTransition] = useTransition();
@@ -98,7 +99,7 @@ export function SharePanel({
     return [...people.values()];
   }, [data, friends, groups, lists]);
 
-  const total = picked.length + (self ? 1 : 0);
+  const total = picked.length + (self ? 1 : 0) + (toFollowers ? 1 : 0);
   const blocked = Boolean(data?.restricted || data?.paused);
 
   function toggle(set: Set<number>, update: (next: Set<number>) => void, id: number) {
@@ -114,6 +115,7 @@ export function SharePanel({
       const answer = await shareFromSheetAction({
         postId,
         self,
+        followers: toFollowers,
         friendIds: [...friends],
         groupIds: [...groups],
         listIds: [...lists],
@@ -254,6 +256,32 @@ export function SharePanel({
                   <CheckDot on={self} disabled={!data.self.ok} />
                 </button>
 
+                {/* Followers audience: only on your own posts. The server rejects it for anyone else. */}
+                {data.followers.available ? (
+                  <button
+                    type="button"
+                    disabled={data.followers.alreadySent}
+                    aria-pressed={toFollowers}
+                    data-testid="sheet-followers"
+                    onClick={() => setToFollowers((value) => !value)}
+                    className={cn(
+                      "press flex min-h-[60px] w-full items-center gap-3 rounded-2xl px-2 text-left disabled:opacity-50",
+                      toFollowers ? "bg-brand-soft" : "hover:bg-surface-2",
+                    )}
+                  >
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-ink text-[rgb(var(--surface))]">
+                      <Rss className="h-5 w-5" aria-hidden />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[15px] font-semibold">Followers · {data.followers.count}</span>
+                      <span className="block text-[12.5px] text-ink-3">
+                        {data.followers.alreadySent ? "Already sent to your followers" : "Everyone who follows you, now and later"}
+                      </span>
+                    </span>
+                    <CheckDot on={toFollowers} disabled={data.followers.alreadySent} />
+                  </button>
+                ) : null}
+
                 {data.groups.length || data.lists.length ? (
                   <div className="no-scrollbar relative -mx-3 flex gap-2 overflow-x-auto px-5 py-2.5">
                     {data.groups.map((group) => {
@@ -310,7 +338,7 @@ export function SharePanel({
                       )}
                     >
                       <span className={cn("relative", !friend.ok && "opacity-45")}>
-                        <Avatar initials={friend.initials} color={friend.avatarColor} name={friend.displayName} size="md" />
+                        <Avatar initials={friend.initials} color={friend.avatarColor} src={friend.avatarUrl} name={friend.displayName} size="md" />
                         {friend.alreadySent ? (
                           <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-brand text-brand-on ring-2 ring-[rgb(var(--surface))]">
                             <Check className="h-3 w-3" strokeWidth={3} aria-hidden />
@@ -368,7 +396,7 @@ export function SharePanel({
                   <>
                     <AvatarStack people={picked} size="sm" max={4} />
                     <span className="truncate text-sm font-semibold text-ink-2">
-                      {self && !picked.length ? "Your feed" : `${total} ${total === 1 ? "person" : "people"}`}
+                      {!picked.length && toFollowers && !self ? "Your followers" : self && !picked.length && !toFollowers ? "Your feed" : `${total} ${total === 1 ? "pick" : "picks"}`}
                     </span>
                   </>
                 ) : (

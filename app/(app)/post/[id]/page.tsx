@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowRight, Info, Lock, Send } from "lucide-react";
 import { setReshareAction } from "@/app/actions";
+import { PostMenu } from "@/components/post-menu";
 import { Avatar } from "@/components/avatar";
 import { Comments } from "@/components/comments";
 import { Notice } from "@/components/notice";
@@ -57,7 +58,7 @@ export default async function PostPage({
         ) : null}
         <header className="flex items-center gap-3 px-4 pb-2.5 pt-3">
           <Link href={`/u/${author.username}`} className="shrink-0 rounded-full">
-            <Avatar initials={author.initials} color={author.avatarColor} name={author.displayName} size="md" />
+            <Avatar initials={author.initials} color={author.avatarColor} src={author.avatarUrl} name={author.displayName} size="md" />
           </Link>
           <div className="min-w-0 flex-1">
             <Link className="block truncate text-[15px] font-semibold text-ink hover:underline" href={`/u/${author.username}`}>
@@ -65,9 +66,10 @@ export default async function PostPage({
             </Link>
             <p className="flex items-center gap-1 truncate text-[12.5px] text-ink-3">
               {kindLabel(post.kind)} · {formatWhen(post.createdAt)} · <Lock className="h-3 w-3" aria-hidden />
-              {mine ? "Only people you share with" : staffView ? "Case view" : "Shared with you"}
+              {mine ? "Only people you share with" : staffView ? "Case view" : reached ? "Shared with you" : "Followers"}
             </p>
           </div>
+          {!staffView ? <PostMenu postId={post.id} own={mine} returnTo={`/post/${post.id}`} /> : null}
         </header>
         {staffView ? (
           <p className="mx-4 mb-3 flex items-start gap-2 rounded-2xl bg-surface-2 px-3.5 py-2.5 text-[13px] text-ink-2">
@@ -110,7 +112,7 @@ export default async function PostPage({
             {reached.chain.map((person, i) => (
               <li key={`${person.id}-${i}`} className="flex items-center gap-1.5">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-surface py-0.5 pl-0.5 pr-2.5 shadow-e1">
-                  <Avatar initials={person.initials} color={person.avatarColor} name={person.displayName} size="xs" />
+                  <Avatar initials={person.initials} color={person.avatarColor} src={person.avatarUrl} name={person.displayName} size="xs" />
                   {person.displayName}
                 </span>
                 <ArrowRight className="h-3.5 w-3.5 text-brand-strong" aria-hidden />

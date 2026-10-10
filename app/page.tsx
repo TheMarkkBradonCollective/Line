@@ -62,7 +62,7 @@ export default async function HomePage({
               href="/timeline"
               className="press mt-7 inline-flex h-12 w-fit items-center gap-2.5 rounded-full bg-white pl-1.5 pr-5 text-[15px] font-semibold text-[#02261c] shadow-e2"
             >
-              <Avatar initials={current.initials} color={current.avatarColor} name={current.displayName} size="sm" />
+              <Avatar initials={current.initials} color={current.avatarColor} src={current.avatarUrl} name={current.displayName} size="sm" />
               Continue as {current.displayName.split(" ")[0]}
               <ArrowRight className="h-4 w-4" aria-hidden />
             </Link>

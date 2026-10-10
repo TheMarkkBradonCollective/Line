@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Clapperboard, House, Layers, Plus, Search, Shield, UserRound, Users, type LucideIcon } from "lucide-react";
+import { Bell, Compass, Clapperboard, House, Layers, Plus, Search, Shield, UserRound, Users, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function activePath(pathname: string, href: string) {
@@ -14,6 +14,7 @@ export function SideNav({ unread, staff, requests = 0 }: { unread: number; staff
   const pathname = usePathname();
   const items: { href: string; label: string; Icon: LucideIcon; badge?: number }[] = [
     { href: "/timeline", label: "Home", Icon: House },
+    { href: "/discover", label: "Discover", Icon: Compass },
     { href: "/reels", label: "Reels", Icon: Clapperboard },
     { href: "/friends", label: "Friends", Icon: Users, badge: requests },
     { href: "/notifications", label: "Notifications", Icon: Bell, badge: unread },

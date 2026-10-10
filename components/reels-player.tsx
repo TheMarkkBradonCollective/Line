@@ -111,7 +111,7 @@ function ReelSlide({ reel, active, viewerId }: { reel: ReelItem; active: boolean
       {/* Right action column */}
       <div className="absolute bottom-24 right-3 flex flex-col items-center gap-4">
         <Link href={`/u/${reel.author.username}`} aria-label={`${reel.author.displayName}'s profile`} className="rounded-full">
-          <Avatar initials={reel.author.initials} color={reel.author.avatarColor} name={reel.author.displayName} size="md" ring />
+          <Avatar initials={reel.author.initials} color={reel.author.avatarColor} src={reel.author.avatarUrl} name={reel.author.displayName} size="md" ring />
         </Link>
         <button type="button" onClick={toggleLike} aria-pressed={Boolean(summary.mine)} aria-label={mine ? `${mine.label}, tap to remove` : "Like"} className="press flex flex-col items-center gap-1 text-[12px] font-semibold">
           <span className={cn("flex h-12 w-12 items-center justify-center rounded-full backdrop-blur-md", summary.mine ? "bg-white text-brand-strong" : "bg-black/35")}>

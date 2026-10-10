@@ -25,6 +25,12 @@ import {
   setReaction,
   sharePost,
   unblockUser,
+  deletePost,
+  follow,
+  unfollow,
+  getDiscover,
+  publishPost,
+  shareToFollowers,
 } from "../lib/social";
 
 function check(condition: unknown, message: string): asserts condition {
@@ -295,6 +301,81 @@ check(
   "Photo posts take images only",
 );
 
+
+// ── Follows and the Followers audience ────────────────────────────────────────
+async function person(username: string) {
+  const id = await db.insert(
+    "INSERT INTO profiles (username, display_name, avatar_color, initials) VALUES (?, ?, '#00bf8f', ?)",
+    [username, username[0].toUpperCase() + username.slice(1), username.slice(0, 2).toUpperCase()],
+  );
+  return id;
+}
+async function befriend(a: number, b: number) {
+  await db.run("INSERT INTO friendships (requester_id, addressee_id, status) VALUES (?, ?, 'accepted')", [a, b]);
+}
+const ava = await person("ava"); // author
+const finn = await person("finn"); // follows Ava, not her friend
+const gus = await person("gus"); // Finn's friend
+const hal = await person("hal"); // Gus's friend
+const ike = await person("ike"); // follows nobody
+const ben = await person("ben"); // Ava's friend
+await befriend(finn, gus);
+await befriend(gus, hal);
+await befriend(ava, ben);
+await follow(db, finn, ava);
+
+const pub = await publishPost(db, ava, { kind: "text", body: "for my followers", allowReshare: true, choice: { self: false, followers: true, friendIds: [], groupIds: [], listIds: [] } });
+const friendsOnly = await publishPost(db, ava, { kind: "text", body: "friends only", allowReshare: true, choice: { self: false, friendIds: [ben], groupIds: [], listIds: [] } });
+check(await canViewPost(db, finn, pub.postId), "A follower sees a follower-audience post");
+check(!(await canViewPost(db, ike, pub.postId)), "A non-follower does not see a follower-audience post");
+check(!(await canViewPost(db, finn, friendsOnly.postId)), "A follower does not see the author's friends-only or direct shares");
+check((await getDiscover(db, finn)).some((item) => item.post.id === pub.postId), "Discover shows a followed author's Followers post");
+check(!(await getDiscover(db, finn)).some((item) => item.post.id === friendsOnly.postId), "Discover never shows friends-only posts");
+check(!(await getHomeFeed(db, finn)).some((item) => item.postId === pub.postId), "A Followers post goes to Discover only, not the follower's Home feed");
+check((await getDiscover(db, ike)).length === 0, "Discover is empty when you follow no one");
+check((await profilePosts(db, finn, ava)).some((item) => item.post.id === pub.postId), "The author's profile shows a follower their Followers post");
+check((await profilePosts(db, ike, ava)).length === 0, "The author's profile shows a non-follower nothing");
+
+// Direct sharing is friends only, even when you follow someone.
+const nonFriend = await sharePost(db, { postId: pub.postId, fromUserId: finn, recipients: [{ userId: ava, shareKind: "direct" }] });
+check(nonFriend.created.length === 0 && nonFriend.rejected.length === 1, "The server rejects a direct share to a non-friend");
+const ownToStranger = await sharePost(db, { postId: friendsOnly.postId, fromUserId: ava, recipients: [{ userId: ike, shareKind: "direct" }] });
+check(ownToStranger.created.length === 0, "Even the author can't direct-share to a non-friend");
+
+// A follower can start a friend-to-friend chain; each recipient can pass it on to their friends.
+const toGus = await sharePost(db, { postId: pub.postId, fromUserId: finn, recipients: [{ userId: gus, shareKind: "direct" }] });
+check(toGus.created.length === 1, "A follower can reshare a Followers post to a friend");
+check(await canViewPost(db, gus, pub.postId), "The friend sees the reshared post");
+const toHal = await sharePost(db, { postId: pub.postId, fromUserId: gus, recipients: [{ userId: hal, shareKind: "direct" }] });
+check(toHal.created.length === 1 && (await canViewPost(db, hal, pub.postId)), "That friend can reshare onward to their friend");
+check((await getHomeFeed(db, gus)).some((item) => item.postId === pub.postId && item.sharedBy.id === finn), "A follower's reshare lands on the friend's Home feed, shared by the follower");
+check((await getHomeFeed(db, hal)).some((item) => item.postId === pub.postId && item.chain.some((p) => p.id === finn)), "Onward reshares land on Home with the share chain");
+check(!(await getDiscover(db, gus)).some((item) => item.post.id === pub.postId), "Reshares never put the post in the recipient's Discover");
+
+// Only the author may use the Followers audience.
+await follow(db, ike, finn);
+check(await threw(() => shareToFollowers(db, pub.postId, finn)), "A non-author can't send someone else's post to their followers");
+check(!(await canViewPost(db, ike, pub.postId)), "Following a resharer gives no access to the post");
+
+// Unfollowing removes Discover visibility.
+await unfollow(db, finn, ava);
+check(!(await getDiscover(db, finn)).some((item) => item.post.id === pub.postId), "Unfollowing removes the post from Discover");
+check(!(await canViewPost(db, finn, pub.postId)), "Unfollowing removes access to a Followers post");
+await follow(db, finn, ava);
+check(await canViewPost(db, finn, pub.postId), "Future followers see Followers posts");
+
+// Deleting a post removes access and returns its media paths for Storage removal.
+check(await threw(() => deletePost(db, finn, pub.postId)), "Only the author can delete a post");
+const mediaPost = await createPost(db, ava, { kind: "photo", body: "pic", frames: [{ path: `u/${ava}/a.jpg`, mime: "image/jpeg" }], allowReshare: true });
+await shareToFollowers(db, mediaPost, ava);
+const removed = await deletePost(db, ava, mediaPost);
+check(removed.length === 1 && removed[0] === `u/${ava}/a.jpg`, "Deleting a post hands back its media for removal");
+const removedText = await deletePost(db, ava, pub.postId);
+check(removedText.length === 0, "text post has no media");
+check(!(await canViewPost(db, gus, pub.postId)) && !(await canViewPost(db, finn, pub.postId)), "A deleted post is gone for everyone");
+const leftovers = (await db.get("SELECT (SELECT COUNT(*) FROM shares WHERE post_id = ?) + (SELECT COUNT(*) FROM follower_shares WHERE post_id = ?) AS c", [pub.postId, pub.postId])) as { c: number };
+check(Number(leftovers.c) === 0, "Deleting a post removes its shares");
+
 // Lockdown: RLS on every LINE table and no grants for the browser roles.
 for (const table of LINE_TABLES) {
   const row = (await db.get(
@@ -317,6 +398,7 @@ console.log("Administrator has no platform ownership. Founder does.");
 console.log("Jordan's profile shows Marcus only what Jordan sent him. Noah's profile is open but empty for Marcus.");
 console.log("Riley's hall reel can't be opened by Marcus by URL, media, or Reels.");
 console.log("Comments and reactions on the river note are hidden from Alex.");
+  console.log("Followers posts reach current followers only; follower chains go friend to friend; only authors use Followers; direct shares are friends only; delete removes access and media.");
   console.log("Posts can only use the author's own uploads. Every table has RLS on and no browser grants.");
 }
 

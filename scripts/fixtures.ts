@@ -95,6 +95,8 @@ async function user(db: Db, username: string): Promise<User> {
     displayName: row.display_name,
     bio: row.bio,
     avatarColor: row.avatar_color,
+    avatarUrl: null,
+    coverUrl: null,
     initials: row.initials,
     role: row.role,
     whoCanShare: row.who_can_share,

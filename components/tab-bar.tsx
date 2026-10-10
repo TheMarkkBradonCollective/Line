@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Clapperboard, House, Plus, UserRound, Users, type LucideIcon } from "lucide-react";
+import { Clapperboard, Compass, House, Plus, UserRound, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Tab = { href: string; label: string; Icon: LucideIcon };
@@ -11,10 +11,11 @@ type Tab = { href: string; label: string; Icon: LucideIcon };
 // flex basis, so the button sits on the exact horizontal center at any width.
 const LEFT: Tab[] = [
   { href: "/timeline", label: "Home", Icon: House },
-  { href: "/reels", label: "Reels", Icon: Clapperboard },
+  { href: "/discover", label: "Discover", Icon: Compass },
 ];
+// Friends moved to the header (with the request badge).
 const RIGHT: Tab[] = [
-  { href: "/friends", label: "Friends", Icon: Users },
+  { href: "/reels", label: "Reels", Icon: Clapperboard },
   { href: "/profile", label: "Profile", Icon: UserRound },
 ];
 
@@ -54,7 +55,7 @@ function TabLink({ tab, active, badge }: { tab: Tab; active: boolean; badge?: nu
   );
 }
 
-export function TabBar({ requests = 0 }: { requests?: number }) {
+export function TabBar(_props: { requests?: number }) {
   const pathname = usePathname();
   const createActive = activePath(pathname, "/create");
   return (
@@ -86,7 +87,7 @@ export function TabBar({ requests = 0 }: { requests?: number }) {
               key={tab.href}
               tab={tab}
               active={activePath(pathname, tab.href)}
-              badge={tab.href === "/friends" ? requests : undefined}
+              badge={undefined}
             />
           ))}
         </div>

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { BellOff, CheckCheck, Forward, MessageCircle, Play, Repeat2, Send } from "lucide-react";
+import { UserPlus, BellOff, CheckCheck, Forward, MessageCircle, Play, Repeat2, Send } from "lucide-react";
 import { markAllReadAction } from "@/app/actions";
 import { Avatar } from "@/components/avatar";
 import { MediaStill } from "@/components/post-media";
@@ -19,6 +19,7 @@ const KIND = {
   reshared_video: { Icon: Repeat2, verb: "reshared your video", tint: "bg-[#ff7a45] text-white" },
   commented: { Icon: MessageCircle, verb: "commented on your post", tint: "bg-[#2d88ff] text-white" },
   replied: { Icon: MessageCircle, verb: "replied to your comment", tint: "bg-[#2d88ff] text-white" },
+  followed_you: { Icon: UserPlus, verb: "started following you", tint: "bg-brand text-brand-on" },
 } as const;
 
 

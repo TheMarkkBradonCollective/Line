@@ -21,6 +21,8 @@ export const LINE_TABLES = [
   "settings",
   "reactions",
   "comments",
+  "follows",
+  "follower_shares",
 ] as const;
 
 const DIR = path.join(process.cwd(), "supabase", "migrations");

@@ -19,6 +19,9 @@ export type User = {
   restricted: number;
   suspended: number;
   createdAt: string;
+  /** Public profile photo / cover URLs, or null for initials and the green cover. */
+  avatarUrl: string | null;
+  coverUrl: string | null;
 };
 
 /** short and long_video are older names. New posts are text, photo, video, or reel. */
@@ -52,6 +55,8 @@ export type UserRow = {
   bio: string;
   avatar_color: string;
   initials: string;
+  avatar_path?: string | null;
+  cover_path?: string | null;
   role: string;
   who_can_share: SharePolicy;
   who_can_add: AddPolicy;
@@ -95,7 +100,19 @@ export function mapUser(row: UserRow): User {
     restricted: row.restricted,
     suspended: row.suspended,
     createdAt: row.created_at,
+    avatarUrl: profileImageUrl(row.avatar_path),
+    coverUrl: profileImageUrl(row.cover_path),
   };
+}
+
+/** Bucket for profile and cover photos. Public: these are public profile info, unlike post media. */
+export const PROFILE_BUCKET = "line-profiles";
+
+export function profileImageUrl(path: string | null | undefined) {
+  if (!path) return null;
+  if (path.startsWith("/") || path.startsWith("https://")) return path;
+  const base = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
+  return `${base}/storage/v1/object/public/${PROFILE_BUCKET}/${path}`;
 }
 
 export function mapPost(row: PostRow): Post {

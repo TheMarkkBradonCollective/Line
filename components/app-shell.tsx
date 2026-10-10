@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Bell, LogOut, Menu, Search } from "lucide-react";
+import { Bell, LogOut, Menu, Search, Users } from "lucide-react";
 import { logoutAction } from "@/app/actions";
 import { Avatar } from "@/components/avatar";
 import { RightRail } from "@/components/right-rail";
@@ -52,6 +52,19 @@ export async function AppShell({ children }: { children: ReactNode }) {
             >
               <Search className="h-[22px] w-[22px]" aria-hidden />
             </Link>
+            <Link
+              href="/friends"
+              aria-label={requests ? `Friends, ${requests} requests` : "Friends"}
+              data-testid="header-friends"
+              className="tap press relative flex items-center justify-center rounded-full text-[rgb(var(--header-ink))] hover:bg-white/15"
+            >
+              <Users className="h-[22px] w-[22px]" aria-hidden />
+              {requests ? (
+                <span className="absolute right-1.5 top-1.5 min-w-[18px] rounded-full bg-heart px-1 text-center text-[10px] font-bold leading-[18px] text-white ring-2 ring-[rgb(var(--header))]">
+                  {requests > 9 ? "9+" : requests}
+                </span>
+              ) : null}
+            </Link>
             <a
               href="/notifications"
               aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
@@ -87,7 +100,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
           <SideNav unread={unread} staff={staff} requests={requests} />
           <div className="mt-auto flex items-center gap-3 rounded-2xl p-2 lg:bg-surface lg:shadow-e1">
             <Link href="/profile" className="flex min-w-0 flex-1 items-center gap-3 text-ink">
-              <Avatar initials={user.initials} color={user.avatarColor} name={user.displayName} size="md" />
+              <Avatar initials={user.initials} color={user.avatarColor} src={user.avatarUrl} name={user.displayName} size="md" />
               <span className="hidden min-w-0 lg:block">
                 <span className="block truncate text-sm font-semibold">{user.displayName}</span>
                 <span className="block truncate text-xs text-ink-3">

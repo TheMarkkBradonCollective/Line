@@ -1,10 +1,11 @@
 import type { Db } from "./db";
 import { isVideoKind } from "./format";
-import { canViewPost, canViewProfile } from "./access";
+import { canViewPost, canViewProfile, postAccess } from "./access";
 import type { AddPolicy, Frame, Post, PostKind, PostRow, ResharePolicy, SharePolicy, User, UserRow } from "./types";
 import { mapPost, mapUser } from "./types";
 
-export { canViewPost, canViewProfile, postAccess, requireVisible } from "./access";
+export { canViewPost, canViewProfile, requireVisible } from "./access";
+export { postAccess };
 
 export const REACTION_KINDS = ["like", "love", "haha", "wow", "sad"] as const;
 export type ReactionKind = (typeof REACTION_KINDS)[number];
@@ -189,7 +190,7 @@ export async function canShareWith(db: Db, fromId: number, toId: number, post: P
       return { ok: false as const, reason: "Only friends of the creator can reshare this." };
     }
     if (author.whoCanReshare === "recipients") {
-      if (!await hasShareTo(db, post.id, fromId)) {
+      if (!await hasShareTo(db, post.id, fromId) && (await postAccess(db, fromId, post)) !== "follower") {
         return { ok: false as const, reason: "You can pass this on only after it was shared with you." };
       }
     }
@@ -200,6 +201,10 @@ export async function canShareWith(db: Db, fromId: number, toId: number, post: P
   }
   if (await isBlocked(db, fromId, toId)) {
     return { ok: false as const, reason: `A block stops sharing with ${to.displayName}.` };
+  }
+  // Direct shares (people, groups, lists) go to friends only. Following someone never lets you share to them.
+  if (!await areFriends(db, fromId, toId)) {
+    return { ok: false as const, reason: `You can only share directly with friends. ${to.displayName} isn’t your friend.` };
   }
   if (to.whoCanShare === "nobody") {
     return { ok: false as const, reason: `${to.displayName} is not accepting shares.` };
@@ -292,6 +297,8 @@ export async function sharePost(db: Db,
 
 export type RecipientChoice = {
   self: boolean;
+  /** Send to everyone who follows you (now and later). Only for your own posts. */
+  followers?: boolean;
   friendIds: number[];
   groupIds: number[];
   listIds: number[];
@@ -414,14 +421,15 @@ export async function publishPost(db: Db,
   },
 ) {
   const { recipients, errors } = await expandRecipients(db, authorId, input.choice);
-  if (recipients.length === 0) {
-    throw new Error("Pick “Just me”, people, a group, or a list. A post only reaches someone when you share it with them.");
+  if (recipients.length === 0 && !input.choice.followers) {
+    throw new Error("Pick “Just me”, Followers, people, a group, or a list. A post only reaches someone when you share it with them.");
   }
   const postId = await createPost(db, authorId, input);
+  if (input.choice.followers) await shareToFollowers(db, postId, authorId, input.note);
   const shared = recipients.length
     ? await sharePost(db, { postId, fromUserId: authorId, recipients, note: input.note })
     : { created: [], rejected: [] };
-  return { postId, ...shared, errors };
+  return { postId, ...shared, errors, followers: Boolean(input.choice.followers) };
 }
 
 /** People who passed a share along between the creator and the sender, oldest first. One query. */
@@ -763,6 +771,7 @@ export async function removeFriend(db: Db, userId: number, otherId: number) {
 export async function blockUser(db: Db, userId: number, otherId: number) {
   if (userId === otherId) throw new Error("You cannot block yourself.");
   await mustUser(db, otherId);
+  await db.run("DELETE FROM follows WHERE (follower_id = ? AND followee_id = ?) OR (follower_id = ? AND followee_id = ?)", [userId, otherId, otherId, userId]);
   const now = new Date().toISOString();
   await db.run("INSERT INTO blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", [userId, otherId, now]);
   await db.run(`DELETE FROM friendships
@@ -1162,9 +1171,11 @@ export async function listReels(db: Db, viewerId: number): Promise<ReelItem[]> {
   const rows = (await db.all(
     `SELECT p.* FROM posts p
      WHERE p.kind IN ('reel', 'short') AND p.hidden = 0
-       AND (p.author_id = ? OR EXISTS (SELECT 1 FROM shares s WHERE s.post_id = p.id AND s.to_user_id = ?))
+       AND (p.author_id = ? OR EXISTS (SELECT 1 FROM shares s WHERE s.post_id = p.id AND s.to_user_id = ?)
+            OR EXISTS (SELECT 1 FROM follower_shares fs JOIN follows f ON f.followee_id = fs.from_user_id
+                       WHERE fs.post_id = p.id AND f.follower_id = ?))
      ORDER BY p.created_at DESC, p.id DESC`,
-    [viewerId, viewerId],
+    [viewerId, viewerId, viewerId],
   )) as PostRow[];
   const allowed = await Promise.all(
     rows.map((row) => canViewPost(db, viewerId, { id: row.id, authorId: row.author_id, hidden: row.hidden })),
@@ -1282,6 +1293,7 @@ export async function listNotifications(db: Db, userId: number) {
     if (row.kind === "reshared_video") text = `${row.actor_name} reshared your video.`;
     if (row.kind === "commented") text = `${row.actor_name} commented on your post.`;
     if (row.kind === "replied") text = `${row.actor_name} replied to your comment.`;
+    if (row.kind === "followed_you") text = `${row.actor_name} started following you.`;
     return { ...row, text };
   });
 }
@@ -1355,6 +1367,7 @@ export type ShareTarget = {
   displayName: string;
   initials: string;
   avatarColor: string;
+  avatarUrl: string | null;
   ok: boolean;
   reason: string | null;
   alreadySent: boolean;
@@ -1379,6 +1392,7 @@ export async function shareTargets(db: Db, viewer: User, post: Post) {
         displayName: friend.displayName,
         initials: friend.initials,
         avatarColor: friend.avatarColor,
+        avatarUrl: friend.avatarUrl,
         ok: decision.ok && !sent.has(friend.id),
         reason: sent.has(friend.id) ? "Already sent" : decision.ok ? null : decision.reason,
         alreadySent: sent.has(friend.id),
@@ -1398,6 +1412,11 @@ export async function shareTargets(db: Db, viewer: User, post: Post) {
     groups: groups.map((group) => ({ id: group.id, name: group.name, members: pack(group.members) })),
     lists: lists.map((list) => ({ id: list.id, name: list.name, members: pack(list.members) })),
     self: { ok: self.ok && !sent.has(viewer.id), reason: sent.has(viewer.id) ? "Already in your feed" : self.ok ? null : self.reason },
+    // The Followers audience exists only for the post's author.
+    followers:
+      post.authorId === viewer.id
+        ? { available: true, alreadySent: await sentToFollowers(db, post.id), count: (await followCounts(db, viewer.id)).followers }
+        : { available: false, alreadySent: false, count: 0 },
   };
 }
 
@@ -1420,3 +1439,130 @@ export async function shareCircle(db: Db, userId: number) {
 }
 
 export const AVATAR_COLORS = ["#00bf8f", "#24527a", "#e05a33", "#8a5a2b", "#6b3a55", "#7b2cbf", "#c44b7a", "#2f2f2f"];
+
+// ── Followers audience, follows, Discover, delete, profile photos ─────────────────────────────
+
+/**
+ * Send a post to everyone who follows its author, including future followers.
+ * Only the original author may do this; a resharer can never send someone else's post to their followers.
+ */
+export async function shareToFollowers(db: Db, postId: number, fromUserId: number, note?: string | null) {
+  const post = await getPost(db, postId);
+  if (!post) throw new Error("That post is gone.");
+  if (post.authorId !== fromUserId) throw new Error("Only the person who made a post can send it to their followers.");
+  if (post.hidden) throw new Error("Moderation removed this, so it cannot be shared.");
+  const me = await mustUser(db, fromUserId);
+  if (me.suspended || me.restricted) throw new Error("Your account cannot share right now.");
+  if ((await getSetting(db, "sharing_paused")) === "1") throw new Error("Sharing is paused.");
+  const clean = note?.trim() ? note.trim().slice(0, 200) : null;
+  const existing = await db.get("SELECT 1 AS ok FROM follower_shares WHERE post_id = ? AND from_user_id = ?", [postId, fromUserId]);
+  await db.run(
+    "INSERT INTO follower_shares (post_id, from_user_id, note, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
+    [postId, fromUserId, clean, new Date().toISOString()],
+  );
+  return { alreadySent: Boolean(existing) };
+}
+
+export async function sentToFollowers(db: Db, postId: number) {
+  return Boolean(await db.get("SELECT 1 AS ok FROM follower_shares WHERE post_id = ? AND from_user_id = (SELECT author_id FROM posts WHERE id = ?)", [postId, postId]));
+}
+
+export async function isFollowing(db: Db, followerId: number, followeeId: number) {
+  return Boolean(await db.get("SELECT 1 AS ok FROM follows WHERE follower_id = ? AND followee_id = ?", [followerId, followeeId]));
+}
+
+export async function follow(db: Db, followerId: number, followeeId: number) {
+  if (followerId === followeeId) throw new Error("You can’t follow yourself.");
+  const other = await mustUser(db, followeeId);
+  if (await isBlocked(db, followerId, followeeId)) throw new Error(`You can’t follow ${other.displayName}.`);
+  const fresh = !(await isFollowing(db, followerId, followeeId));
+  await db.run("INSERT INTO follows (follower_id, followee_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", [
+    followerId,
+    followeeId,
+    new Date().toISOString(),
+  ]);
+  if (fresh) {
+    await db.run("INSERT INTO notifications (user_id, kind, actor_id, read, created_at) VALUES (?, 'followed_you', ?, 0, ?)", [
+      followeeId,
+      followerId,
+      new Date().toISOString(),
+    ]);
+  }
+}
+
+export async function unfollow(db: Db, followerId: number, followeeId: number) {
+  await db.run("DELETE FROM follows WHERE follower_id = ? AND followee_id = ?", [followerId, followeeId]);
+}
+
+export async function followCounts(db: Db, personId: number) {
+  const row = (await db.get(
+    `SELECT (SELECT COUNT(*) FROM follows WHERE followee_id = ?)::int AS followers,
+            (SELECT COUNT(*) FROM follows WHERE follower_id = ?)::int AS following`,
+    [personId, personId],
+  )) as { followers: number; following: number };
+  return { followers: Number(row.followers), following: Number(row.following) };
+}
+
+/** Followers or following of a person, hiding anyone across a block from the viewer. */
+export async function listFollows(db: Db, viewerId: number, personId: number, which: "followers" | "following") {
+  const [mine, other] = which === "followers" ? ["followee_id", "follower_id"] : ["follower_id", "followee_id"];
+  const rows = (await db.all(
+    `SELECT p.* FROM follows f JOIN profiles p ON p.id = f.${other}
+     WHERE f.${mine} = ?
+       AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = ? AND b.blocked_id = p.id) OR (b.blocker_id = p.id AND b.blocked_id = ?))
+     ORDER BY f.created_at DESC`,
+    [personId, viewerId, viewerId],
+  )) as UserRow[];
+  return rows.map(mapUser);
+}
+
+export type DiscoverItem = Engagement & { post: Post; author: User; note: string | null; at: string };
+
+/**
+ * Discover: only posts that people you follow sent to Followers, newest first.
+ * No ranking, no strangers, no friends-only posts. Each item still passes the access gate.
+ */
+export async function getDiscover(db: Db, viewerId: number): Promise<DiscoverItem[]> {
+  const rows = (await db.all(
+    `SELECT p.*, fs.note AS fs_note, fs.created_at AS fs_at
+     FROM follower_shares fs
+     JOIN follows f ON f.followee_id = fs.from_user_id AND f.follower_id = ?
+     JOIN posts p ON p.id = fs.post_id AND p.author_id = fs.from_user_id
+     WHERE p.hidden = 0
+     ORDER BY fs.created_at DESC, p.id DESC
+     LIMIT 100`,
+    [viewerId],
+  )) as (PostRow & { fs_note: string | null; fs_at: string })[];
+  const allowed = await Promise.all(
+    rows.map((row) => canViewPost(db, viewerId, { id: row.id, authorId: row.author_id, hidden: row.hidden })),
+  );
+  const visible = rows.filter((_, i) => allowed[i]);
+  const counts = await engagementMany(db, visible.map((row) => row.id), viewerId);
+  return Promise.all(
+    visible.map(async (row) => ({
+      post: mapPost(row),
+      author: await mustUser(db, row.author_id),
+      note: row.fs_note,
+      at: row.fs_at,
+      ...counts.get(row.id)!,
+    })),
+  );
+}
+
+/**
+ * The author deletes their own post. Shares, follower sends, comments, reactions and notifications
+ * go with it (foreign keys cascade). Returns the storage paths so the caller removes the files.
+ */
+export async function deletePost(db: Db, userId: number, postId: number) {
+  const post = await getPost(db, postId);
+  if (!post || post.authorId !== userId) throw new Error("Only the person who made a post can delete it.");
+  await db.run("DELETE FROM posts WHERE id = ? AND author_id = ?", [postId, userId]);
+  return post.frames.map((frame) => frame.path);
+}
+
+export async function setProfileImage(db: Db, userId: number, which: "avatar" | "cover", path: string | null) {
+  const column = which === "avatar" ? "avatar_path" : "cover_path";
+  const before = (await db.get(`SELECT ${column} AS path FROM profiles WHERE id = ?`, [userId])) as { path: string | null } | undefined;
+  await db.run(`UPDATE profiles SET ${column} = ? WHERE id = ?`, [path, userId]);
+  return before?.path ?? null;
+}
