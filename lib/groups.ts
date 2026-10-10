@@ -3,6 +3,9 @@ import { canViewPost, postAccess } from "./access";
 import { areFriends, canShareWith, engagementMany, getPost, isBlocked, mustUser, usersByIds, type Engagement } from "./social";
 import type { Post, PostRow, User } from "./types";
 import { mapPost, profileImageUrl } from "./types";
+import { v3Ready } from "./schema-ready";
+
+export { v3Ready };
 
 /**
  * Groups: a set of people with a shared feed.
@@ -34,6 +37,7 @@ const mapGroup = (row: GroupRow): Group => ({
 });
 
 export async function membership(db: Db, groupId: number, userId: number) {
+  if (!(await v3Ready(db))) return undefined;
   return (await db.get("SELECT role, joined_at, muted FROM line_group_members WHERE group_id = ? AND user_id = ?", [groupId, userId])) as
     | { role: GroupRole; joined_at: string; muted: number }
     | undefined;
@@ -54,6 +58,7 @@ function cleanName(name: string) {
 }
 
 export async function createCommunity(db: Db, ownerId: number, input: { name: string; about?: string; memberIds?: number[] }) {
+  if (!(await v3Ready(db))) throw new Error("Groups switch on once the site owner runs the latest database update.");
   const owner = await mustUser(db, ownerId);
   if (owner.suspended || owner.restricted) throw new Error("Your account can’t create groups right now.");
   const name = cleanName(input.name);
@@ -150,6 +155,7 @@ export async function setGroupMuted(db: Db, userId: number, groupId: number, mut
 }
 
 export async function listMyCommunities(db: Db, userId: number) {
+  if (!(await v3Ready(db))) return [];
   const rows = (await db.all(
     `SELECT g.*, m.role, m.muted, (SELECT COUNT(*) FROM line_group_members x WHERE x.group_id = g.id) AS member_count,
             (SELECT MAX(gp.created_at) FROM group_posts gp WHERE gp.group_id = g.id AND gp.created_at >= m.joined_at) AS last_at
@@ -230,6 +236,7 @@ export async function removeGroupPost(db: Db, userId: number, groupId: number, p
 
 /** Can this person read and write the group thread on this post? Current member, joined before it was shared, and can see the post. */
 export async function canUseGroupThread(db: Db, viewerId: number, groupId: number, postId: number) {
+  if (!(await v3Ready(db))) return false;
   const row = await db.get(
     `SELECT 1 AS ok FROM group_posts gp JOIN line_group_members m ON m.group_id = gp.group_id AND m.user_id = ?
      WHERE gp.group_id = ? AND gp.post_id = ? AND m.joined_at <= gp.created_at`,
@@ -280,6 +287,7 @@ export async function groupFeed(db: Db, viewerId: number, groupId: number): Prom
 
 /** Groups the viewer could share this post into (member, and the post isn't there yet). */
 export async function groupTargets(db: Db, viewerId: number, postId: number | null) {
+  if (!(await v3Ready(db))) return [];
   const rows = (await db.all(
     `SELECT g.id, g.name, g.photo_path, (SELECT COUNT(*) FROM line_group_members x WHERE x.group_id = g.id) AS member_count,
             ${postId ? "EXISTS (SELECT 1 FROM group_posts gp WHERE gp.group_id = g.id AND gp.post_id = ?)" : "false"} AS has_it

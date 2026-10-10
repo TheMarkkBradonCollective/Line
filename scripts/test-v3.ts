@@ -123,11 +123,36 @@ export async function groupRules(db: Db) {
   console.log("groups ok: members-only feeds and threads, late joiners, leaving, onward shares, admin roles.");
 }
 
+/** The site must keep working before the owner runs line_update3.sql: every pre-update code path still runs. */
+async function beforeUpdate(db: Db) {
+  const { resetSchemaReady } = await import("../lib/schema-ready");
+  const social = await import("../lib/social");
+  await db.exec("DROP TABLE line_v3_marker");
+  resetSchemaReady();
+  const { person, befriend } = people(db);
+  const a = await person("preupa");
+  const b = await person("preupb");
+  await befriend(a, b);
+  const p = await publishPost(db, a, { kind: "text", body: "before update", allowReshare: true, choice: { self: true, friendIds: [b], groupIds: [], listIds: [] } });
+  check(await canViewPost(db, b, p.postId), "Before the update, shares still work");
+  await addComment(db, b, p.postId, { body: "hi" });
+  check((await listComments(db, a, p.postId))!.length === 1, "Before the update, comments still work");
+  check((await listNotifications(db, a)).length > 0, "Before the update, alerts still work");
+  await social.getHomeFeed(db, b);
+  await social.getDiscover(db, b);
+  await social.listReels(db, b);
+  await social.profilePosts(db, b, a, "posts");
+  const more = await import("./test-v3-more");
+  if (more.beforeUpdate) await more.beforeUpdate(db, { a, b, postId: p.postId });
+  console.log("pre-update fallback ok: the site works before line_update3.sql runs.");
+}
+
 if (process.argv[1]?.endsWith("test-v3.ts")) {
   withTestDatabase(async (db) => {
     await groupRules(db);
     const extra = await import("./test-v3-more");
     await extra.run(db);
+    await beforeUpdate(db);
   }).catch((error) => {
     console.error(error);
     process.exit(1);

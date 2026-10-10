@@ -1,4 +1,5 @@
 import type { Db } from "./db";
+import { v3Ready } from "./schema-ready";
 
 /**
  * The one rule: no share, no see.
@@ -37,6 +38,7 @@ export async function postAccess(db: Db, viewer: number | { id: number }, post: 
   const viewerId = typeof viewer === "number" ? viewer : viewer.id;
   const postId = typeof post === "number" ? post : post.id;
   // One round trip: the post's owner and state, a block either way, and a share addressed to the viewer.
+  const groups = await v3Ready(db);
   const row = (await db.get(
     `SELECT p.author_id, p.hidden,
             EXISTS (SELECT 1 FROM blocks b
@@ -46,9 +48,9 @@ export async function postAccess(db: Db, viewer: number | { id: number }, post: 
             EXISTS (SELECT 1 FROM follower_shares fs
                     JOIN follows f ON f.followee_id = fs.from_user_id AND f.follower_id = ?
                     WHERE fs.post_id = p.id AND fs.from_user_id = p.author_id) AS followed,
-            EXISTS (SELECT 1 FROM group_posts gp
+            ${groups ? `EXISTS (SELECT 1 FROM group_posts gp
                     JOIN line_group_members m ON m.group_id = gp.group_id AND m.user_id = ? AND m.joined_at <= gp.created_at
-                    WHERE gp.post_id = p.id) AS grouped
+                    WHERE gp.post_id = p.id)` : "(?::int IS NULL AND false)"} AS grouped
      FROM posts p WHERE p.id = ?`,
     [viewerId, viewerId, viewerId, viewerId, viewerId, postId],
   )) as { author_id: number; hidden: number; blocked: boolean; shared: boolean; followed: boolean; grouped: boolean } | undefined;

@@ -28,6 +28,7 @@ export const LINE_TABLES = [
   "line_groups",
   "line_group_members",
   "group_posts",
+  "line_v3_marker",
 ] as const;
 
 const DIR = path.join(process.cwd(), "supabase", "migrations");

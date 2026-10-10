@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { ago } from "@/lib/format";
-import { listMyCommunities } from "@/lib/groups";
+import { listMyCommunities, v3Ready } from "@/lib/groups";
 import { getCurrentUser } from "@/lib/session";
 import { listFriends } from "@/lib/social";
 
@@ -33,6 +33,11 @@ export default async function GroupsPage({ searchParams }: { searchParams: Promi
       />
       <div className="px-4 md:px-0">
         <Notice notice={query.notice} error={query.error} />
+        {!(await v3Ready(db)) ? (
+          <p className="banner-warn mb-4 px-3.5 py-2.5 text-[13.5px]" data-testid="needs-update">
+            Groups switch on as soon as the site owner runs the latest database update (line_update3.sql).
+          </p>
+        ) : null}
         {groups.length === 0 ? (
           <EmptyState icon={Users} title="No groups yet">
             Start one with a few friends. Only members see it.
