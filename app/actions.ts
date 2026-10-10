@@ -9,7 +9,9 @@ import { cleanUsername, ensureProfile, getCurrentUser } from "@/lib/session";
 import { confirmUploads, createUploadTargets, removeMedia, removeProfileImage, uploadProfileImage, type UploadRequest, type UploadTarget } from "@/lib/storage";
 import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { DEFAULT_TABS, normalizeTabs } from "@/lib/tab-bar";
 import {
+  setTabBar,
   accountMediaPaths,
   deleteProfile,
   dislikePost,
@@ -653,7 +655,7 @@ export async function deletePostAction(formData: FormData) {
     revalidatePath("/timeline");
     revalidatePath("/posts");
     revalidatePath("/discover");
-    const back = returnTo.startsWith("/post/") || returnTo.startsWith("/reels/") ? "/timeline" : returnTo;
+    const back = returnTo.startsWith("/post/") || returnTo.startsWith("/loops/") ? "/timeline" : returnTo;
     redirect(withQuery(back, "notice", "Post deleted."));
   });
 }
@@ -796,4 +798,14 @@ export async function deleteAccountAction(formData: FormData) {
     await supabase.auth.signOut();
     redirect(withQuery("/", "notice", "Your account was deleted."));
   });
+}
+
+/** Save the bottom bar. Answers saved:false if the database column isn't there yet (client then keeps it locally). */
+export async function saveTabBarAction(tabs: string[] | null): Promise<{ saved: boolean; tabs: string[] }> {
+  const user = await getCurrentUser();
+  const clean = tabs ? normalizeTabs(tabs) : [...DEFAULT_TABS];
+  if (!user) return { saved: false, tabs: clean };
+  const saved = await setTabBar(getDb(), user.id, tabs ? clean : null);
+  revalidatePath("/", "layout");
+  return { saved, tabs: clean };
 }

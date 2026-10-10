@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 /** Keeps the Supabase Auth session fresh. Access decisions still happen on the server pages and routes. */
 export async function middleware(request: NextRequest) {
+  // Lets the server layout pick a wider layout for profile pages. Not used for access decisions.
+  request.headers.set("x-line-path", request.nextUrl.pathname);
   let response = NextResponse.next({ request });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;

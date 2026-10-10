@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { Bell, LogOut, Menu, Search, Users } from "lucide-react";
 import { logoutAction } from "@/app/actions";
 import { Avatar } from "@/components/avatar";
@@ -10,7 +11,7 @@ import { TabBar } from "@/components/tab-bar";
 import { getDb } from "@/lib/db";
 import { ROLE_LABELS, type Role } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
-import { friendSuggestions, listPermissions, pendingIncoming, shareCircle, unreadCount } from "@/lib/social";
+import { getTabBar, friendSuggestions, listPermissions, pendingIncoming, shareCircle, unreadCount } from "@/lib/social";
 
 export async function AppShell({ children }: { children: ReactNode }) {
   const user = await getCurrentUser();
@@ -19,6 +20,9 @@ export async function AppShell({ children }: { children: ReactNode }) {
   const unread = await unreadCount(db, user.id);
   const requests = (await pendingIncoming(db, user.id)).length;
   const staff = (await listPermissions(db, user.id)).length > 0;
+  const path = (await headers()).get("x-line-path") ?? "";
+  // Profiles get a wide two-column layout on desktop, without the right rail.
+  const wide = path === "/profile" || path.startsWith("/profile/") || path.startsWith("/u/");
   const role = ROLE_LABELS[user.role as Role] ?? user.role;
 
   if (user.suspended) {
@@ -89,7 +93,13 @@ export async function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-[1280px] grid-cols-[minmax(0,1fr)] md:grid-cols-[88px_minmax(0,600px)] md:justify-center md:gap-6 md:px-4 lg:grid-cols-[248px_minmax(0,600px)] lg:gap-8 xl:grid-cols-[248px_minmax(0,600px)_320px]">
+      <div
+        className={
+          wide
+            ? "mx-auto grid max-w-[1320px] grid-cols-[minmax(0,1fr)] md:grid-cols-[88px_minmax(0,1fr)] md:gap-6 md:px-4 lg:grid-cols-[248px_minmax(0,1040px)] lg:justify-center lg:gap-8"
+            : "mx-auto grid max-w-[1280px] grid-cols-[minmax(0,1fr)] md:grid-cols-[88px_minmax(0,600px)] md:justify-center md:gap-6 md:px-4 lg:grid-cols-[248px_minmax(0,600px)] lg:gap-8 xl:grid-cols-[248px_minmax(0,600px)_320px]"
+        }
+      >
         <aside className="sticky top-0 hidden h-dvh flex-col py-6 md:flex">
           <Link href="/timeline" aria-label="LINE home" className="mb-6 flex items-center gap-2.5 px-3">
             <span className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-gradient-to-br from-brand to-brand-deep text-white shadow-glow">
@@ -130,11 +140,11 @@ export async function AppShell({ children }: { children: ReactNode }) {
           {children}
         </main>
 
-        <aside className="sticky top-0 hidden h-dvh overflow-y-auto py-6 no-scrollbar xl:block" aria-label="Share with friends">
+        <aside className={wide ? "hidden" : "sticky top-0 hidden h-dvh overflow-y-auto py-6 no-scrollbar xl:block"} aria-label="Share with friends">
           <RightRail circle={await shareCircle(db, user.id)} suggestions={await friendSuggestions(db, user.id, 3)} requests={requests} />
         </aside>
       </div>
-      <TabBar requests={requests} />
+      <TabBar requests={requests} unread={unread} saved={await getTabBar(db, user.id)} />
     </div>
   );
 }

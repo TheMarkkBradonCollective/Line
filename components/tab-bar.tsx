@@ -2,24 +2,30 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Clapperboard, Compass, House, Plus, UserRound, type LucideIcon } from "lucide-react";
+import { Bell, Clapperboard, Compass, House, Layers, Plus, UserRound, Users, UsersRound, type LucideIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { DEFAULT_TABS, normalizeTabs, TAB_OPTIONS, TAB_STORAGE_KEY, type TabKey } from "@/lib/tab-bar";
 import { cn } from "@/lib/utils";
 
 type Tab = { href: string; label: string; Icon: LucideIcon };
 
-// Two tabs on each side of the raised Create button. Both sides get the same
-// flex basis, so the button sits on the exact horizontal center at any width.
-const LEFT: Tab[] = [
-  { href: "/timeline", label: "Home", Icon: House },
-  { href: "/discover", label: "Discover", Icon: Compass },
-];
-// Friends moved to the header (with the request badge).
-const RIGHT: Tab[] = [
-  { href: "/reels", label: "Reels", Icon: Clapperboard },
-  { href: "/profile", label: "Profile", Icon: UserRound },
-];
+const ICONS: Record<TabKey, LucideIcon> = {
+  home: House,
+  discover: Compass,
+  reels: Clapperboard,
+  friends: Users,
+  profile: UserRound,
+  alerts: Bell,
+  groups: UsersRound,
+  posts: Layers,
+};
+
+function toTab(key: TabKey): Tab & { key: TabKey } {
+  return { key, href: TAB_OPTIONS[key].href, label: TAB_OPTIONS[key].label, Icon: ICONS[key] };
+}
 
 function activePath(pathname: string, href: string) {
+  href = href.split("?")[0];
   if (href === "/profile") return pathname === "/profile";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -55,8 +61,32 @@ function TabLink({ tab, active, badge }: { tab: Tab; active: boolean; badge?: nu
   );
 }
 
-export function TabBar(_props: { requests?: number }) {
+/**
+ * Two tabs on each side of the raised Create button, chosen in Settings → Tab bar.
+ * Both sides get the same flex basis, so Create sits on the exact horizontal center for any layout.
+ * The saved choice comes from the server; before the tab_bar column exists, a local copy is used.
+ */
+export function TabBar({ requests = 0, unread = 0, saved = null }: { requests?: number; unread?: number; saved?: string | null }) {
   const pathname = usePathname();
+  const [keys, setKeys] = useState<TabKey[]>(saved ? normalizeTabs(saved) : [...DEFAULT_TABS]);
+  useEffect(() => {
+    const load = () => {
+      if (saved) return setKeys(normalizeTabs(saved));
+      try {
+        const local = window.localStorage.getItem(TAB_STORAGE_KEY);
+        setKeys(local ? normalizeTabs(local) : [...DEFAULT_TABS]);
+      } catch {
+        /* storage blocked */
+      }
+    };
+    load();
+    const onChange = (event: Event) => setKeys(normalizeTabs((event as CustomEvent<string[]>).detail));
+    window.addEventListener("line-tabbar", onChange);
+    return () => window.removeEventListener("line-tabbar", onChange);
+  }, [saved]);
+  const LEFT = keys.slice(0, 2).map(toTab);
+  const RIGHT = keys.slice(2, 4).map(toTab);
+  const badgeFor = (key: TabKey) => (key === "friends" ? requests : key === "alerts" ? unread : undefined);
   const createActive = activePath(pathname, "/create");
   return (
     <nav
@@ -67,7 +97,7 @@ export function TabBar(_props: { requests?: number }) {
       <div className="flex h-[60px] items-stretch px-2">
         <div className="flex flex-1 basis-0 items-stretch">
           {LEFT.map((tab) => (
-            <TabLink key={tab.href} tab={tab} active={activePath(pathname, tab.href)} />
+            <TabLink key={tab.key} tab={tab} active={activePath(pathname, tab.href)} badge={badgeFor(tab.key)} />
           ))}
         </div>
         <div className="relative flex w-[76px] shrink-0 justify-center">
@@ -84,10 +114,10 @@ export function TabBar(_props: { requests?: number }) {
         <div className="flex flex-1 basis-0 items-stretch">
           {RIGHT.map((tab) => (
             <TabLink
-              key={tab.href}
+              key={tab.key}
               tab={tab}
               active={activePath(pathname, tab.href)}
-              badge={undefined}
+              badge={badgeFor(tab.key)}
             />
           ))}
         </div>

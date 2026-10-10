@@ -2,9 +2,9 @@ const KINDS: Record<string, string> = {
   text: "Note",
   photo: "Photo",
   video: "Video",
-  short: "Reel",
+  short: "Loop",
   long_video: "Video",
-  reel: "Reel",
+  reel: "Loop",
 };
 
 export function kindLabel(kind: string) {

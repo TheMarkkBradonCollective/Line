@@ -11,6 +11,7 @@ export const RULES: RuleSection[] = [
     points: [
       "You only see a post if you made it, someone shared it with you, or its author sent it to their Followers and you follow them.",
       "There is no algorithm and no public feed. Search finds people, never posts.",
+      "Loops (short vertical videos) follow the same rule. The Loops tab only plays Loops that reached you, plus your own.",
       "The rule is checked on the server for every page, link, photo, video, comment, reaction, notification and count. A direct link to a post you weren’t sent shows “not found”.",
     ],
   },

@@ -130,7 +130,7 @@ function PlayerChrome({
         ) : null}
       </button>
       <span className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-black/40 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
-        {kindLabel === "Reel" ? <Clapperboard className="h-3 w-3" aria-hidden /> : <Play className="h-3 w-3 fill-white" aria-hidden />}
+        {kindLabel === "Loop" ? <Clapperboard className="h-3 w-3" aria-hidden /> : <Play className="h-3 w-3 fill-white" aria-hidden />}
         {kindLabel}
       </span>
       <button
@@ -172,7 +172,7 @@ export function PostMedia({
   const reel = kind === "reel" || kind === "short";
   const tile = variant === "tile";
   const player = useVideo(isVideo && !tile && frames.length > 0, variant === "reel" || reel);
-  const alt = body.slice(0, 120) || (reel ? "Reel" : isVideo ? "Video" : "Photo");
+  const alt = body.slice(0, 120) || (reel ? "Loop" : isVideo ? "Video" : "Photo");
 
   if (kind === "text") {
     if (!tile && body.length > 160) return null;
@@ -186,7 +186,7 @@ export function PostMedia({
         <Still postId={postId} frame={frames[0]} alt={alt} />
         <span className="pointer-events-none absolute right-1.5 top-1.5 rounded-full bg-black/45 p-1 text-white backdrop-blur-md">
           {reel ? <Clapperboard className="h-3 w-3" aria-hidden /> : isVideo ? <Play className="h-3 w-3 fill-white" aria-hidden /> : frames.length > 1 ? <Images className="h-3 w-3" aria-hidden /> : null}
-          <span className="sr-only">{reel ? "Reel" : isVideo ? "Video" : "Photo"}</span>
+          <span className="sr-only">{reel ? "Loop" : isVideo ? "Video" : "Photo"}</span>
         </span>
       </div>
     );
@@ -212,7 +212,7 @@ export function PostMedia({
           onToggle={() => player.setPaused((value) => !value)}
           sound={player.sound}
           onSound={() => player.setSound((value) => !value)}
-          kindLabel={reel ? "Reel" : "Video"}
+          kindLabel={reel ? "Loop" : "Video"}
           progress={player.progress}
           big={variant !== "reel"}
         />

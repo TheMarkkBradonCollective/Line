@@ -12,7 +12,7 @@ import type { User } from "@/lib/types";
 export function PostCard({ item, author, viewerId, allowDislike = false }: { item: ProfilePost; author: User; viewerId: number; allowDislike?: boolean }) {
   const { post } = item;
   const reel = post.kind === "reel" || post.kind === "short";
-  const href = reel ? `/reels/${post.id}` : `/post/${post.id}`;
+  const href = reel ? `/loops/${post.id}` : `/post/${post.id}`;
   const longText = post.kind === "text" && post.body.length > 160;
   const own = author.id === viewerId;
   return (

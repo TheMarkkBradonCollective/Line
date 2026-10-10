@@ -6,6 +6,7 @@ const SIZES = {
   md: "h-11 w-11 text-sm",
   lg: "h-14 w-14 text-base",
   xl: "h-24 w-24 text-2xl",
+  xxl: "h-36 w-36 text-4xl lg:h-40 lg:w-40",
 } as const;
 
 type Size = keyof typeof SIZES;

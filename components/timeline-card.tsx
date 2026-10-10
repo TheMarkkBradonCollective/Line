@@ -20,7 +20,7 @@ export function TimelineCard({ item, index = 0 }: { item: TimelineItem; index?: 
   const chain = item.chain;
   const passers = chain.slice(1, -1);
   const reel = item.kind === "reel" || item.kind === "short";
-  const href = reel ? `/reels/${item.postId}` : `/post/${item.postId}`;
+  const href = reel ? `/loops/${item.postId}` : `/post/${item.postId}`;
   const longText = item.kind === "text" && item.body.length > 160;
 
   let context: React.ReactNode = null;
