@@ -175,7 +175,7 @@ export function ReelsPlayer({ reels, viewerId }: { reels: ReelItem[]; viewerId: 
     <div className="fixed inset-x-0 bottom-[calc(60px+env(safe-area-inset-bottom))] top-[calc(56px+env(safe-area-inset-top))] z-10 bg-black md:relative md:inset-auto md:z-auto md:mt-6 md:h-[calc(100dvh-48px)] md:overflow-hidden md:rounded-[28px] md:shadow-e3">
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between px-4 py-3 text-white">
         <h1 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight drop-shadow">
-          <Clapperboard className="h-5 w-5" aria-hidden /> Reels
+          <Clapperboard className="h-5 w-5" aria-hidden /> Loops
         </h1>
         <span className="rounded-full bg-black/35 px-2.5 py-1 text-[11.5px] font-semibold backdrop-blur-md">Only Loops shared with you</span>
       </div>
@@ -191,7 +191,7 @@ export function ReelsPlayer({ reels, viewerId }: { reels: ReelItem[]; viewerId: 
             <p className="font-display text-xl font-bold">No Loops yet</p>
             <p className="text-[14px] text-white/75">When a friend shares a Loop with you, it plays here. Nothing else does.</p>
             <Link href="/create?type=reel" className="press mt-2 inline-flex h-11 items-center rounded-full bg-brand px-5 font-semibold text-white">
-              Make a reel
+              Make a Loop
             </Link>
           </div>
         ) : null}

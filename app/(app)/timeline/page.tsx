@@ -73,7 +73,7 @@ export default async function HomePage({
               <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand text-white shadow-glow">
                 <Plus className="h-5 w-5" strokeWidth={2.6} aria-hidden />
               </span>
-              Create reel
+              Create Loop
             </Link>
           </li>
           {reels.map((reel) => (
