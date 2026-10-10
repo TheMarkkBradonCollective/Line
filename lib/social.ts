@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./db";
 import { isVideoKind } from "./format";
 import { canViewPost, canViewProfile } from "./access";
 import type { AddPolicy, Frame, Post, PostKind, PostRow, ResharePolicy, SharePolicy, User, UserRow } from "./types";
@@ -31,8 +31,6 @@ export type TimelineItem = {
   toUserId: number;
   kind: PostKind;
   body: string;
-  mediaLabel: string | null;
-  mediaTone: string | null;
   author: User;
   sharedBy: User;
   shareKind: string;
@@ -59,132 +57,120 @@ export type ShareSuccess = { userId: number; shareId: number };
 
 const POST_KINDS = new Set(["text", "photo", "video", "short", "long_video", "reel"]);
 
-export function getUserById(db: Database.Database, id: number) {
-  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | undefined;
+export async function getUserById(db: Db, id: number) {
+  return db.memo(`user:${id}`, async () => {
+    const row = (await db.get("SELECT * FROM profiles WHERE id = ?", [id])) as UserRow | undefined;
+    return row ? mapUser(row) : null;
+  });
+}
+
+/** Many people at once, in the order asked. Unknown ids throw like mustUser. */
+export async function usersByIds(db: Db, ids: number[]) {
+  return Promise.all(ids.map((id) => mustUser(db, id)));
+}
+
+export async function getUserByAuthId(db: Db, authId: string) {
+  const row = (await db.get("SELECT * FROM profiles WHERE auth_id = ?", [authId])) as UserRow | undefined;
   return row ? mapUser(row) : null;
 }
 
-export function getUserByUsername(db: Database.Database, username: string) {
-  const row = db.prepare("SELECT * FROM users WHERE username = ?").get(username) as UserRow | undefined;
+export async function getUserByUsername(db: Db, username: string) {
+  const row = await db.get("SELECT * FROM profiles WHERE username = ?", [username]) as UserRow | undefined;
   return row ? mapUser(row) : null;
 }
 
-export function mustUser(db: Database.Database, id: number) {
-  const user = getUserById(db, id);
+export async function mustUser(db: Db, id: number) {
+  const user = await getUserById(db, id);
   if (!user) throw new Error("That person is not on LINE.");
   return user;
 }
 
-export function listUsers(db: Database.Database) {
-  const rows = db.prepare("SELECT * FROM users ORDER BY display_name COLLATE NOCASE").all() as UserRow[];
+export async function listUsers(db: Db) {
+  const rows = await db.all("SELECT * FROM profiles ORDER BY lower(display_name), id") as UserRow[];
   return rows.map(mapUser);
 }
 
-export function getPost(db: Database.Database, id: number) {
-  const row = db.prepare("SELECT * FROM posts WHERE id = ?").get(id) as PostRow | undefined;
+export async function getPost(db: Db, id: number) {
+  const row = await db.get("SELECT * FROM posts WHERE id = ?", [id]) as PostRow | undefined;
   return row ? mapPost(row) : null;
 }
 
-export function getPostBySeedKey(db: Database.Database, seedKey: string) {
-  const row = db.prepare("SELECT * FROM posts WHERE seed_key = ?").get(seedKey) as PostRow | undefined;
+export async function getPostBySeedKey(db: Db, seedKey: string) {
+  const row = await db.get("SELECT * FROM posts WHERE seed_key = ?", [seedKey]) as PostRow | undefined;
   return row ? mapPost(row) : null;
 }
 
-export function getSetting(db: Database.Database, key: string) {
-  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined;
+export async function getSetting(db: Db, key: string) {
+  const row = await db.get("SELECT value FROM settings WHERE key = ?", [key]) as { value: string } | undefined;
   return row?.value ?? "";
 }
 
-export function listPermissions(db: Database.Database, userId: number) {
-  const rows = db.prepare("SELECT permission FROM permissions WHERE user_id = ? ORDER BY permission").all(userId) as {
+export async function listPermissions(db: Db, userId: number) {
+  const rows = await db.all("SELECT permission FROM permissions WHERE user_id = ? ORDER BY permission", [userId]) as {
     permission: string;
   }[];
   return rows.map((row) => row.permission);
 }
 
-export function hasPermission(db: Database.Database, userId: number, permission: string) {
-  const row = db
-    .prepare("SELECT 1 AS ok FROM permissions WHERE user_id = ? AND permission = ?")
-    .get(userId, permission) as { ok: number } | undefined;
+export async function hasPermission(db: Db, userId: number, permission: string) {
+  const row = await db.get("SELECT 1 AS ok FROM permissions WHERE user_id = ? AND permission = ?", [userId, permission]) as { ok: number } | undefined;
   return Boolean(row);
 }
 
-export function areFriends(db: Database.Database, a: number, b: number) {
+export async function areFriends(db: Db, a: number, b: number) {
   if (a === b) return false;
-  const row = db
-    .prepare(
-      `SELECT 1 AS ok FROM friendships
+  const row = await db.get(`SELECT 1 AS ok FROM friendships
        WHERE status = 'accepted'
-         AND ((requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?))`,
-    )
-    .get(a, b, b, a) as { ok: number } | undefined;
+         AND ((requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?))`, [a, b, b, a]) as { ok: number } | undefined;
   return Boolean(row);
 }
 
-export function isBlocked(db: Database.Database, a: number, b: number) {
-  const row = db
-    .prepare(
-      `SELECT 1 AS ok FROM blocks
-       WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)`,
-    )
-    .get(a, b, b, a) as { ok: number } | undefined;
+export async function isBlocked(db: Db, a: number, b: number) {
+  const row = await db.get(`SELECT 1 AS ok FROM blocks
+       WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)`, [a, b, b, a]) as { ok: number } | undefined;
   return Boolean(row);
 }
 
-export function friendIds(db: Database.Database, userId: number) {
-  const rows = db
-    .prepare(
-      `SELECT CASE WHEN requester_id = ? THEN addressee_id ELSE requester_id END AS id
-       FROM friendships WHERE status = 'accepted' AND (requester_id = ? OR addressee_id = ?)`,
-    )
-    .all(userId, userId, userId) as { id: number }[];
+export async function friendIds(db: Db, userId: number) {
+  const rows = await db.all(`SELECT CASE WHEN requester_id = ? THEN addressee_id ELSE requester_id END AS id
+       FROM friendships WHERE status = 'accepted' AND (requester_id = ? OR addressee_id = ?)`, [userId, userId, userId]) as { id: number }[];
   return rows.map((row) => row.id);
 }
 
-export function listFriends(db: Database.Database, userId: number) {
-  const ids = friendIds(db, userId);
-  return ids
-    .map((id) => mustUser(db, id))
-    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+export async function listFriends(db: Db, userId: number) {
+  const ids = await friendIds(db, userId);
+  return (await usersByIds(db, ids)).sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
-function sharesAFriend(db: Database.Database, a: number, b: number) {
-  const mine = new Set(friendIds(db, a));
-  return friendIds(db, b).some((id) => mine.has(id));
+async function sharesAFriend(db: Db, a: number, b: number) {
+  const mine = new Set(await friendIds(db, a));
+  return (await friendIds(db, b)).some((id) => mine.has(id));
 }
 
-function inInboundGroup(db: Database.Database, ownerId: number, senderId: number) {
-  const row = db
-    .prepare(
-      `SELECT 1 AS ok
+async function inInboundGroup(db: Db, ownerId: number, senderId: number) {
+  const row = await db.get(`SELECT 1 AS ok
        FROM friend_groups g
        JOIN friend_group_members m ON m.group_id = g.id
-       WHERE g.owner_id = ? AND g.allows_inbound_share = 1 AND m.user_id = ?`,
-    )
-    .get(ownerId, senderId) as { ok: number } | undefined;
+       WHERE g.owner_id = ? AND g.allows_inbound_share = 1 AND m.user_id = ?`, [ownerId, senderId]) as { ok: number } | undefined;
   return Boolean(row);
 }
 
-function onAllowList(db: Database.Database, ownerId: number, senderId: number) {
-  const row = db
-    .prepare("SELECT 1 AS ok FROM share_allow WHERE user_id = ? AND allowed_id = ?")
-    .get(ownerId, senderId) as { ok: number } | undefined;
+async function onAllowList(db: Db, ownerId: number, senderId: number) {
+  const row = await db.get("SELECT 1 AS ok FROM share_allow WHERE user_id = ? AND allowed_id = ?", [ownerId, senderId]) as { ok: number } | undefined;
   return Boolean(row);
 }
 
-export function hasShareTo(db: Database.Database, postId: number, userId: number) {
-  const row = db
-    .prepare("SELECT 1 AS ok FROM shares WHERE post_id = ? AND to_user_id = ?")
-    .get(postId, userId) as { ok: number } | undefined;
+export async function hasShareTo(db: Db, postId: number, userId: number) {
+  const row = await db.get("SELECT 1 AS ok FROM shares WHERE post_id = ? AND to_user_id = ?", [postId, userId]) as { ok: number } | undefined;
   return Boolean(row);
 }
 
-export function canShareWith(db: Database.Database, fromId: number, toId: number, post: Post) {
-  if (getSetting(db, "sharing_paused") === "1") {
+export async function canShareWith(db: Db, fromId: number, toId: number, post: Post) {
+  if (await getSetting(db, "sharing_paused") === "1") {
     return { ok: false as const, reason: "Sharing is paused." };
   }
-  const from = mustUser(db, fromId);
-  const to = mustUser(db, toId);
+  const from = await mustUser(db, fromId);
+  const to = await mustUser(db, toId);
   if (from.suspended || from.restricted) {
     return { ok: false as const, reason: "Your account cannot share right now." };
   }
@@ -195,15 +181,15 @@ export function canShareWith(db: Database.Database, fromId: number, toId: number
     return { ok: false as const, reason: "The creator turned off resharing." };
   }
   if (fromId !== post.authorId) {
-    const author = mustUser(db, post.authorId);
+    const author = await mustUser(db, post.authorId);
     if (author.whoCanReshare === "nobody") {
       return { ok: false as const, reason: "The creator does not allow resharing." };
     }
-    if (author.whoCanReshare === "friends" && !areFriends(db, fromId, author.id)) {
+    if (author.whoCanReshare === "friends" && !await areFriends(db, fromId, author.id)) {
       return { ok: false as const, reason: "Only friends of the creator can reshare this." };
     }
     if (author.whoCanReshare === "recipients") {
-      if (!hasShareTo(db, post.id, fromId)) {
+      if (!await hasShareTo(db, post.id, fromId)) {
         return { ok: false as const, reason: "You can pass this on only after it was shared with you." };
       }
     }
@@ -212,38 +198,33 @@ export function canShareWith(db: Database.Database, fromId: number, toId: number
   if (to.suspended) {
     return { ok: false as const, reason: `${to.displayName} is not receiving shares.` };
   }
-  if (isBlocked(db, fromId, toId)) {
+  if (await isBlocked(db, fromId, toId)) {
     return { ok: false as const, reason: `A block stops sharing with ${to.displayName}.` };
   }
   if (to.whoCanShare === "nobody") {
     return { ok: false as const, reason: `${to.displayName} is not accepting shares.` };
   }
-  if (to.whoCanShare === "friends" && !areFriends(db, fromId, toId)) {
+  if (to.whoCanShare === "friends" && !await areFriends(db, fromId, toId)) {
     return { ok: false as const, reason: `${to.displayName} only accepts shares from friends.` };
   }
-  if (to.whoCanShare === "allow_list" && !onAllowList(db, toId, fromId)) {
+  if (to.whoCanShare === "allow_list" && !await onAllowList(db, toId, fromId)) {
     return { ok: false as const, reason: `${to.displayName} has not allowed shares from you.` };
   }
-  if (to.whoCanShare === "groups" && !inInboundGroup(db, toId, fromId)) {
+  if (to.whoCanShare === "groups" && !await inInboundGroup(db, toId, fromId)) {
     return { ok: false as const, reason: `${to.displayName} only accepts shares from certain groups.` };
   }
   return { ok: true as const };
 }
 
-function parentShareId(db: Database.Database, post: Post, fromId: number) {
+async function parentShareId(db: Db, post: Post, fromId: number) {
   if (post.authorId === fromId) return null;
-  const row = db
-    .prepare(
-      `SELECT id FROM shares
+  const row = await db.get(`SELECT id FROM shares
        WHERE post_id = ? AND to_user_id = ? AND from_user_id != ?
-       ORDER BY id DESC LIMIT 1`,
-    )
-    .get(post.id, fromId, fromId) as { id: number } | undefined;
+       ORDER BY id DESC LIMIT 1`, [post.id, fromId, fromId]) as { id: number } | undefined;
   return row?.id ?? null;
 }
 
-export function sharePost(
-  db: Database.Database,
+export async function sharePost(db: Db,
   input: {
     postId: number;
     fromUserId: number;
@@ -252,30 +233,28 @@ export function sharePost(
     createdAt?: string;
   },
 ) {
-  const post = getPost(db, input.postId);
+  const post = await getPost(db, input.postId);
   if (!post) throw new Error("That post is gone.");
   const note = input.note?.trim() ? input.note.trim().slice(0, 200) : null;
   const created: ShareSuccess[] = [];
   const rejected: ShareRejection[] = [];
   const seen = new Set<number>();
 
-  const run = db.transaction(() => {
+  await db.tx(async (db) => {
     for (const recipient of input.recipients) {
       if (seen.has(recipient.userId)) continue;
       seen.add(recipient.userId);
-      const person = getUserById(db, recipient.userId);
+      const person = await getUserById(db, recipient.userId);
       if (!person) {
         rejected.push({ userId: recipient.userId, name: "Someone", reason: "No such person." });
         continue;
       }
-      const decision = canShareWith(db, input.fromUserId, recipient.userId, post);
+      const decision = await canShareWith(db, input.fromUserId, recipient.userId, post);
       if (!decision.ok) {
         rejected.push({ userId: person.id, name: person.displayName, reason: decision.reason });
         continue;
       }
-      const existing = db
-        .prepare("SELECT id FROM shares WHERE post_id = ? AND from_user_id = ? AND to_user_id = ?")
-        .get(post.id, input.fromUserId, person.id) as { id: number } | undefined;
+      const existing = await db.get("SELECT id FROM shares WHERE post_id = ? AND from_user_id = ? AND to_user_id = ?", [post.id, input.fromUserId, person.id]) as { id: number } | undefined;
       if (existing) {
         rejected.push({
           userId: person.id,
@@ -285,41 +264,29 @@ export function sharePost(
         continue;
       }
       const when = input.createdAt ?? new Date().toISOString();
-      const info = db
-        .prepare(
-          `INSERT INTO shares
+      const shareId = await db.insert(`INSERT INTO shares
             (post_id, from_user_id, to_user_id, share_kind, group_id, list_id, parent_share_id, note, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          post.id,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [post.id,
           input.fromUserId,
           person.id,
           recipient.shareKind,
           recipient.groupId ?? null,
           recipient.listId ?? null,
-          parentShareId(db, post, input.fromUserId),
+          await parentShareId(db, post, input.fromUserId),
           note,
-          when,
-        );
-      const shareId = Number(info.lastInsertRowid);
+          when]);
       created.push({ userId: person.id, shareId });
       if (person.id !== input.fromUserId) {
-        db.prepare(
-          `INSERT INTO notifications (user_id, kind, actor_id, post_id, share_id, read, created_at)
-           VALUES (?, 'shared_with_you', ?, ?, ?, 0, ?)`,
-        ).run(person.id, input.fromUserId, post.id, shareId, when);
+        await db.run(`INSERT INTO notifications (user_id, kind, actor_id, post_id, share_id, read, created_at)
+           VALUES (?, 'shared_with_you', ?, ?, ?, 0, ?)`, [person.id, input.fromUserId, post.id, shareId, when]);
       }
       if (input.fromUserId !== post.authorId) {
         const kind = isVideoKind(post.kind) ? "reshared_video" : "shared_onward";
-        db.prepare(
-          `INSERT INTO notifications (user_id, kind, actor_id, post_id, share_id, read, created_at)
-           VALUES (?, ?, ?, ?, ?, 0, ?)`,
-        ).run(post.authorId, kind, input.fromUserId, post.id, shareId, when);
+        await db.run(`INSERT INTO notifications (user_id, kind, actor_id, post_id, share_id, read, created_at)
+           VALUES (?, ?, ?, ?, ?, 0, ?)`, [post.authorId, kind, input.fromUserId, post.id, shareId, when]);
       }
     }
   });
-  run();
   return { created, rejected };
 }
 
@@ -330,7 +297,7 @@ export type RecipientChoice = {
   listIds: number[];
 };
 
-export function expandRecipients(db: Database.Database, fromUserId: number, choice: RecipientChoice) {
+export async function expandRecipients(db: Db, fromUserId: number, choice: RecipientChoice) {
   const recipients: {
     userId: number;
     shareKind: "direct" | "group" | "list" | "self";
@@ -345,14 +312,12 @@ export function expandRecipients(db: Database.Database, fromUserId: number, choi
     recipients.push({ userId: friendId, shareKind: "direct" });
   }
   for (const groupId of choice.groupIds) {
-    const group = db
-      .prepare("SELECT id, name FROM friend_groups WHERE id = ? AND owner_id = ?")
-      .get(groupId, fromUserId) as { id: number; name: string } | undefined;
+    const group = await db.get("SELECT id, name FROM friend_groups WHERE id = ? AND owner_id = ?", [groupId, fromUserId]) as { id: number; name: string } | undefined;
     if (!group) {
       errors.push("One of those groups is not yours.");
       continue;
     }
-    const members = db.prepare("SELECT user_id FROM friend_group_members WHERE group_id = ?").all(groupId) as {
+    const members = await db.all("SELECT user_id FROM friend_group_members WHERE group_id = ?", [groupId]) as {
       user_id: number;
     }[];
     if (members.length === 0) errors.push(`${group.name} has no one in it.`);
@@ -361,14 +326,12 @@ export function expandRecipients(db: Database.Database, fromUserId: number, choi
     }
   }
   for (const listId of choice.listIds) {
-    const list = db
-      .prepare("SELECT id, name FROM friend_lists WHERE id = ? AND owner_id = ?")
-      .get(listId, fromUserId) as { id: number; name: string } | undefined;
+    const list = await db.get("SELECT id, name FROM friend_lists WHERE id = ? AND owner_id = ?", [listId, fromUserId]) as { id: number; name: string } | undefined;
     if (!list) {
       errors.push("One of those lists is not yours.");
       continue;
     }
-    const members = db.prepare("SELECT user_id FROM friend_list_members WHERE list_id = ?").all(listId) as {
+    const members = await db.all("SELECT user_id FROM friend_list_members WHERE list_id = ?", [listId]) as {
       user_id: number;
     }[];
     if (members.length === 0) errors.push(`${list.name} has no one in it.`);
@@ -379,287 +342,271 @@ export function expandRecipients(db: Database.Database, fromUserId: number, choi
   return { recipients, errors };
 }
 
-export function createPost(
-  db: Database.Database,
+export const MAX_PHOTOS = 6;
+
+/**
+ * Uploaded files a post may use: they must sit in the author's own folder of the media bucket
+ * and match the kind (images for photo posts, one video for video posts and reels).
+ */
+export function checkFrames(authorId: number, kind: string, frames: Frame[]) {
+  for (const frame of frames) {
+    if (!frame.path.startsWith(`u/${authorId}/`) || frame.path.includes("..")) {
+      throw new Error("That upload doesn’t belong to you.");
+    }
+  }
+  if (kind === "text") return [];
+  if (kind === "photo") {
+    if (!frames.length) throw new Error("Add at least one photo.");
+    if (frames.some((frame) => !frame.mime.startsWith("image/"))) throw new Error("Photo posts take images only.");
+    return frames.slice(0, MAX_PHOTOS);
+  }
+  if (!frames.length) throw new Error(kind === "reel" ? "Add a video for your reel." : "Add a video.");
+  if (frames.length > 1 || !frames[0].mime.startsWith("video/")) throw new Error("Add one video file.");
+  return frames;
+}
+
+export async function createPost(
+  db: Db,
   authorId: number,
   input: {
     kind: string;
     body: string;
-    mediaLabel?: string | null;
-    mediaTone?: string | null;
-    /** Several frames for a photo post. The first becomes the cover. */
-    photos?: Frame[] | null;
+    /** Files already uploaded to the media bucket. Required for photo, video and reel posts. */
+    frames?: Frame[] | null;
     allowReshare: boolean;
     seedKey?: string | null;
     createdAt?: string;
   },
 ) {
-  const author = mustUser(db, authorId);
+  const author = await mustUser(db, authorId);
   if (author.suspended || author.restricted) {
     throw new Error("Your account cannot create posts right now.");
   }
   if (!POST_KINDS.has(input.kind)) throw new Error("Choose a kind of post.");
   const body = input.body.trim();
-  if (!body) throw new Error("Write something first.");
+  if (!body && input.kind === "text") throw new Error("Write something first.");
   if (body.length > 2000) throw new Error("Keep it under 2,000 characters.");
-  const photos = input.kind === "photo" && input.photos?.length ? input.photos.slice(0, 6) : null;
-  const mediaLabel = photos ? photos[0].label : input.mediaLabel;
-  const mediaTone = photos ? photos[0].tone : input.mediaTone;
-  if (input.kind !== "text" && !mediaLabel) {
-    throw new Error("Choose a placeholder frame. Real upload is not connected.");
-  }
-  const info = db
-    .prepare(
-      `INSERT INTO posts
-        (author_id, kind, body, media_label, media_tone, photos, allow_reshare, hidden, seed_key, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-    )
-    .run(
+  const frames = checkFrames(authorId, input.kind, input.frames ?? []);
+  return db.insert(
+    `INSERT INTO posts (author_id, kind, body, frames, allow_reshare, hidden, seed_key, created_at)
+     VALUES (?, ?, ?, ?::jsonb, ?, 0, ?, ?)`,
+    [
       authorId,
       input.kind,
       body,
-      input.kind === "text" ? null : mediaLabel ?? null,
-      input.kind === "text" ? null : mediaTone ?? "#00bf8f,#009e78",
-      photos && photos.length > 1 ? JSON.stringify(photos) : null,
+      JSON.stringify(frames),
       input.allowReshare ? 1 : 0,
       input.seedKey ?? null,
       input.createdAt ?? new Date().toISOString(),
-    );
-  return Number(info.lastInsertRowid);
+    ],
+  );
 }
 
-export function publishPost(
-  db: Database.Database,
+export async function publishPost(db: Db,
   authorId: number,
   input: {
     kind: string;
     body: string;
-    mediaLabel?: string | null;
-    mediaTone?: string | null;
-    photos?: Frame[] | null;
+    frames?: Frame[] | null;
     allowReshare: boolean;
     choice: RecipientChoice;
     note?: string | null;
   },
 ) {
-  const { recipients, errors } = expandRecipients(db, authorId, input.choice);
+  const { recipients, errors } = await expandRecipients(db, authorId, input.choice);
   if (recipients.length === 0) {
     throw new Error("Pick “Just me”, people, a group, or a list. A post only reaches someone when you share it with them.");
   }
-  const postId = createPost(db, authorId, input);
+  const postId = await createPost(db, authorId, input);
   const shared = recipients.length
-    ? sharePost(db, { postId, fromUserId: authorId, recipients, note: input.note })
+    ? await sharePost(db, { postId, fromUserId: authorId, recipients, note: input.note })
     : { created: [], rejected: [] };
   return { postId, ...shared, errors };
 }
 
-function provenance(db: Database.Database, shareId: number, parentId: number | null, author: User, sender: User, viewerId: number) {
-  if (sender.id === viewerId && author.id === viewerId) {
-    return "Originally created by you.";
-  }
-  if (sender.id === viewerId) {
-    return `Originally created by ${author.displayName}.`;
-  }
-  if (sender.id === author.id) {
-    return `Originally created by ${author.displayName}.`;
-  }
-  const passed: string[] = [];
-  let cursor = parentId;
-  const seen = new Set<number>([shareId]);
-  while (cursor && !seen.has(cursor)) {
-    seen.add(cursor);
-    const parent = db
-      .prepare("SELECT id, from_user_id, parent_share_id FROM shares WHERE id = ?")
-      .get(cursor) as { id: number; from_user_id: number; parent_share_id: number | null } | undefined;
-    if (!parent) break;
-    if (parent.from_user_id !== author.id && parent.from_user_id !== sender.id) {
-      passed.push(mustUser(db, parent.from_user_id).displayName);
-    }
-    cursor = parent.parent_share_id;
-  }
-  passed.reverse();
-  const via = passed.length ? ` Passed along by ${passed.join(", then ")}.` : "";
+/** People who passed a share along between the creator and the sender, oldest first. One query. */
+async function passersOf(db: Db, parentId: number | null, author: User, sender: User) {
+  if (!parentId) return [] as User[];
+  const rows = (await db.all(
+    `WITH RECURSIVE up AS (
+       SELECT id, from_user_id, parent_share_id, 1 AS depth FROM shares WHERE id = ?
+       UNION ALL
+       SELECT s.id, s.from_user_id, s.parent_share_id, up.depth + 1
+       FROM shares s JOIN up ON s.id = up.parent_share_id
+       WHERE up.depth < 50
+     )
+     SELECT from_user_id FROM up ORDER BY depth`,
+    [parentId],
+  )) as { from_user_id: number }[];
+  const ids = rows.map((row) => row.from_user_id).filter((id) => id !== author.id && id !== sender.id);
+  return (await usersByIds(db, ids)).reverse();
+}
+
+function provenanceText(author: User, sender: User, viewerId: number, passers: User[]) {
+  if (sender.id === viewerId && author.id === viewerId) return "Originally created by you.";
+  if (sender.id === viewerId || sender.id === author.id) return `Originally created by ${author.displayName}.`;
+  const via = passers.length ? ` Passed along by ${passers.map((item) => item.displayName).join(", then ")}.` : "";
   return `Originally created by ${author.displayName}. Shared with you by ${sender.displayName}.${via}`;
 }
 
-/** People who carried a share, creator first and the sender last. Display only. */
-function shareChain(db: Database.Database, shareId: number, parentId: number | null, author: User, sender: User) {
-  const passers: User[] = [];
-  let cursor = parentId;
-  const seen = new Set<number>([shareId]);
-  while (cursor && !seen.has(cursor)) {
-    seen.add(cursor);
-    const parent = db
-      .prepare("SELECT id, from_user_id, parent_share_id FROM shares WHERE id = ?")
-      .get(cursor) as { id: number; from_user_id: number; parent_share_id: number | null } | undefined;
-    if (!parent) break;
-    if (parent.from_user_id !== author.id && parent.from_user_id !== sender.id) {
-      passers.push(mustUser(db, parent.from_user_id));
-    }
-    cursor = parent.parent_share_id;
-  }
-  passers.reverse();
-  const chain = [author, ...passers];
-  if (sender.id !== author.id) chain.push(sender);
-  return chain;
-}
+type TimelineRow = {
+  share_id: number;
+  post_id: number;
+  from_user_id: number;
+  to_user_id: number;
+  share_kind: string;
+  group_id: number | null;
+  parent_share_id: number | null;
+  note: string | null;
+  shared_at: string;
+  kind: PostKind;
+  body: string;
+  frames: Frame[] | null;
+  hidden: number;
+  author_id: number;
+  allow_reshare: number;
+  group_name: string | null;
+};
 
 /**
  * Personal timeline. A row exists only because someone addressed a share to this user
  * (including a share they addressed to themselves).
  */
-export function getTimeline(db: Database.Database, userId: number): TimelineItem[] {
-  const rows = db
-    .prepare(
-      `SELECT
-         s.id AS share_id,
-         s.post_id,
-         s.from_user_id,
-         s.to_user_id,
-         s.share_kind,
-         s.group_id,
-         s.parent_share_id,
-         s.note,
-         s.created_at AS shared_at,
-         p.kind,
-         p.body,
-         p.media_label,
-         p.media_tone,
-         p.photos,
-         p.hidden,
-         p.author_id,
-         p.allow_reshare,
-         g.name AS group_name
-       FROM shares s
-       JOIN posts p ON p.id = s.post_id
-       LEFT JOIN friend_groups g ON g.id = s.group_id
-       WHERE s.to_user_id = ?
-         AND p.hidden = 0
-       ORDER BY s.created_at DESC, s.id DESC`,
-    )
-    .all(userId) as {
-    share_id: number;
-    post_id: number;
-    from_user_id: number;
-    to_user_id: number;
-    share_kind: string;
-    group_id: number | null;
-    parent_share_id: number | null;
-    note: string | null;
-    shared_at: string;
-    kind: PostKind;
-    body: string;
-    media_label: string | null;
-    media_tone: string | null;
-    photos: string | null;
-    hidden: number;
-    author_id: number;
-    allow_reshare: number;
-    group_name: string | null;
-  }[];
-
-  return rows.map((row) => {
-    const author = mustUser(db, row.author_id);
-    const sharedBy = mustUser(db, row.from_user_id);
-    const self = sharedBy.id === userId;
-    let headline = `${sharedBy.displayName} shared this with you.`;
-    if (self && author.id === userId && row.share_kind === "self") {
-      headline = "You published this to your timeline.";
-    } else if (self) {
-      headline = "You shared this onto your timeline.";
-    }
-    return {
-      shareId: row.share_id,
-      postId: row.post_id,
-      toUserId: row.to_user_id,
-      kind: row.kind,
-      body: row.body,
-      mediaLabel: row.media_label,
-      mediaTone: row.media_tone,
-      author,
-      sharedBy,
-      shareKind: row.share_kind,
-      groupName: row.group_name,
-      note: row.note,
-      sharedAt: row.shared_at,
-      headline,
-      provenance: provenance(db, row.share_id, row.parent_share_id, author, sharedBy, userId),
-      chain: shareChain(db, row.share_id, row.parent_share_id, author, sharedBy),
-      allowReshare: row.allow_reshare,
-      frames: mapPost({ ...row, id: row.post_id, seed_key: null, hidden_reason: null, created_at: row.shared_at } as PostRow).frames,
-      ownPost: false,
-      ...engagement(db, row.post_id, userId),
-    };
-  });
+export async function getTimeline(db: Db, userId: number): Promise<TimelineItem[]> {
+  const rows = (await db.all(
+    `SELECT
+       s.id AS share_id, s.post_id, s.from_user_id, s.to_user_id, s.share_kind, s.group_id,
+       s.parent_share_id, s.note, s.created_at AS shared_at,
+       p.kind, p.body, p.frames, p.hidden, p.author_id, p.allow_reshare,
+       g.name AS group_name
+     FROM shares s
+     JOIN posts p ON p.id = s.post_id
+     LEFT JOIN friend_groups g ON g.id = s.group_id
+     WHERE s.to_user_id = ?
+       AND p.hidden = 0
+     ORDER BY s.created_at DESC, s.id DESC`,
+    [userId],
+  )) as TimelineRow[];
+  const counts = await engagementMany(
+    db,
+    rows.map((row) => row.post_id),
+    userId,
+  );
+  return Promise.all(
+    rows.map(async (row) => {
+      const [author, sharedBy] = await Promise.all([mustUser(db, row.author_id), mustUser(db, row.from_user_id)]);
+      const passers = await passersOf(db, row.parent_share_id, author, sharedBy);
+      const self = sharedBy.id === userId;
+      let headline = `${sharedBy.displayName} shared this with you.`;
+      if (self && author.id === userId && row.share_kind === "self") headline = "You published this to your feed.";
+      else if (self) headline = "You shared this onto your feed.";
+      const chain = [author, ...passers];
+      if (sharedBy.id !== author.id) chain.push(sharedBy);
+      return {
+        shareId: row.share_id,
+        postId: row.post_id,
+        toUserId: row.to_user_id,
+        kind: row.kind,
+        body: row.body,
+        author,
+        sharedBy,
+        shareKind: row.share_kind,
+        groupName: row.group_name,
+        note: row.note,
+        sharedAt: row.shared_at,
+        headline,
+        provenance: provenanceText(author, sharedBy, userId, passers),
+        chain,
+        allowReshare: row.allow_reshare,
+        frames: mapPost({
+          ...row,
+          id: row.post_id,
+          seed_key: null,
+          hidden_reason: null,
+          created_at: row.shared_at,
+        } as PostRow).frames,
+        ownPost: false,
+        ...counts.get(row.post_id)!,
+      };
+    }),
+  );
 }
 
 /**
  * Home feed: one card per post that reached you (the latest share wins), plus everything you made.
  * Every item passes the same access check as the post page.
  */
-export function getHomeFeed(db: Database.Database, userId: number): TimelineItem[] {
+export async function getHomeFeed(db: Db, userId: number): Promise<TimelineItem[]> {
   const seen = new Set<number>();
   const items: TimelineItem[] = [];
-  for (const item of getTimeline(db, userId)) {
+  for (const item of await getTimeline(db, userId)) {
     if (seen.has(item.postId)) continue;
     seen.add(item.postId);
     items.push(item);
   }
-  const me = mustUser(db, userId);
-  const own = db
-    .prepare("SELECT * FROM posts WHERE author_id = ? AND hidden = 0 ORDER BY created_at DESC, id DESC")
-    .all(userId) as PostRow[];
-  for (const row of own) {
-    if (seen.has(row.id)) continue;
-    seen.add(row.id);
-    items.push(ownItem(db, me, mapPost(row)));
-  }
+  const me = await mustUser(db, userId);
+  const own = (await db.all("SELECT * FROM posts WHERE author_id = ? AND hidden = 0 ORDER BY created_at DESC, id DESC", [
+    userId,
+  ])) as PostRow[];
+  const fresh = own.filter((row) => !seen.has(row.id));
+  items.push(...(await ownItems(db, me, fresh.map(mapPost))));
+  const allowed = await Promise.all(
+    items.map((item) => canViewPost(db, userId, { id: item.postId, authorId: item.author.id, hidden: 0 })),
+  );
   return items
-    .filter((item) => canViewPost(db, userId, { id: item.postId, authorId: item.author.id, hidden: 0 }))
+    .filter((_, index) => allowed[index])
     .sort((a, b) => b.sharedAt.localeCompare(a.sharedAt) || b.postId - a.postId);
 }
 
-function ownItem(db: Database.Database, me: User, post: Post): TimelineItem {
-  const sentTo = (
-    db.prepare("SELECT COUNT(DISTINCT to_user_id) AS c FROM shares WHERE post_id = ? AND from_user_id = ?").get(post.id, me.id) as {
-      c: number;
-    }
-  ).c;
-  return {
-    shareId: -post.id,
-    postId: post.id,
-    toUserId: me.id,
-    kind: post.kind,
-    body: post.body,
-    mediaLabel: post.mediaLabel,
-    mediaTone: post.mediaTone,
-    author: me,
-    sharedBy: me,
-    shareKind: "own",
-    groupName: null,
-    note: null,
-    sharedAt: post.createdAt,
-    headline: "You posted this.",
-    provenance: sentTo ? `You sent this to ${sentTo} ${sentTo === 1 ? "person" : "people"}.` : "Only you can see this until you share it.",
-    chain: [me],
-    allowReshare: post.allowReshare,
-    frames: post.frames,
-    ownPost: true,
-    ...engagement(db, post.id, me.id),
-  };
+async function ownItems(db: Db, me: User, posts: Post[]): Promise<TimelineItem[]> {
+  if (!posts.length) return [];
+  const ids = posts.map((post) => post.id);
+  const sentRows = (await db.all(
+    `SELECT post_id, COUNT(DISTINCT to_user_id) AS c FROM shares
+     WHERE post_id = ANY(?::int[]) AND from_user_id = ? AND to_user_id <> from_user_id
+     GROUP BY post_id`,
+    [ids, me.id],
+  )) as { post_id: number; c: number }[];
+  const sent = new Map(sentRows.map((row) => [row.post_id, row.c]));
+  const counts = await engagementMany(db, ids, me.id);
+  return posts.map((post) => {
+    const sentTo = sent.get(post.id) ?? 0;
+    return {
+      shareId: -post.id,
+      postId: post.id,
+      toUserId: me.id,
+      kind: post.kind,
+      body: post.body,
+      author: me,
+      sharedBy: me,
+      shareKind: "own",
+      groupName: null,
+      note: null,
+      sharedAt: post.createdAt,
+      headline: "You posted this.",
+      provenance: sentTo
+        ? `You sent this to ${sentTo} ${sentTo === 1 ? "person" : "people"}.`
+        : "Only you can see this until you share it.",
+      chain: [me],
+      allowReshare: post.allowReshare,
+      frames: post.frames,
+      ownPost: true,
+      ...counts.get(post.id)!,
+    };
+  });
 }
 
-export function coreRuleViolations(db: Database.Database) {
+export async function coreRuleViolations(db: Db) {
   const violations: string[] = [];
-  for (const user of listUsers(db)) {
-    const timeline = getTimeline(db, user.id);
+  for (const user of await listUsers(db)) {
+    const timeline = await getTimeline(db, user.id);
     for (const item of timeline) {
       if (item.toUserId !== user.id) {
         violations.push(`${user.username} timeline item ${item.shareId} is not addressed to them`);
       }
-      const share = db
-        .prepare("SELECT to_user_id FROM shares WHERE id = ?")
-        .get(item.shareId) as { to_user_id: number } | undefined;
+      const share = (await db.get("SELECT to_user_id FROM shares WHERE id = ?", [item.shareId])) as
+        | { to_user_id: number }
+        | undefined;
       if (!share || share.to_user_id !== user.id) {
         violations.push(`post ${item.postId} is on ${user.username}'s timeline without a share to them`);
       }
@@ -668,212 +615,195 @@ export function coreRuleViolations(db: Database.Database) {
   return violations;
 }
 
-export function getMyPosts(db: Database.Database, userId: number) {
-  const rows = db
-    .prepare("SELECT * FROM posts WHERE author_id = ? ORDER BY created_at DESC, id DESC")
-    .all(userId) as PostRow[];
+export async function getMyPosts(db: Db, userId: number) {
+  const rows = (await db.all("SELECT * FROM posts WHERE author_id = ? ORDER BY created_at DESC, id DESC", [userId])) as PostRow[];
+  const deliveries = (await db.all(
+    `SELECT s.id, s.post_id, s.to_user_id, s.from_user_id, s.share_kind, s.created_at, s.note, u.display_name, u.username
+     FROM shares s JOIN posts p ON p.id = s.post_id JOIN profiles u ON u.id = s.to_user_id
+     WHERE p.author_id = ?
+     ORDER BY s.created_at ASC, s.id ASC`,
+    [userId],
+  )) as {
+    id: number;
+    post_id: number;
+    to_user_id: number;
+    from_user_id: number;
+    share_kind: string;
+    created_at: string;
+    note: string | null;
+    display_name: string;
+    username: string;
+  }[];
   return rows.map((row) => {
     const post = mapPost(row);
-    const deliveries = db
-      .prepare(
-        `SELECT s.id, s.to_user_id, s.from_user_id, s.share_kind, s.created_at, s.note, u.display_name, u.username
-         FROM shares s JOIN users u ON u.id = s.to_user_id
-         WHERE s.post_id = ?
-         ORDER BY s.created_at ASC, s.id ASC`,
-      )
-      .all(post.id) as {
-      id: number;
-      to_user_id: number;
-      from_user_id: number;
-      share_kind: string;
-      created_at: string;
-      note: string | null;
-      display_name: string;
-      username: string;
-    }[];
-    const reshares = deliveries.filter((item) => item.from_user_id !== userId);
-    const onOwnTimeline = deliveries.some((item) => item.to_user_id === userId);
-    return { post, deliveries, reshares, onOwnTimeline };
+    const mine = deliveries.filter((item) => item.post_id === post.id);
+    const reshares = mine.filter((item) => item.from_user_id !== userId);
+    const onOwnTimeline = mine.some((item) => item.to_user_id === userId);
+    return { post, deliveries: mine, reshares, onOwnTimeline };
   });
 }
 
-export function listGroups(db: Database.Database, ownerId: number) {
-  const groups = db
-    .prepare("SELECT id, name, allows_inbound_share, created_at FROM friend_groups WHERE owner_id = ? ORDER BY name")
-    .all(ownerId) as { id: number; name: string; allows_inbound_share: number; created_at: string }[];
-  return groups.map((group) => {
-    const members = db
-      .prepare(
-        `SELECT u.* FROM friend_group_members m JOIN users u ON u.id = m.user_id
-         WHERE m.group_id = ? ORDER BY u.display_name`,
-      )
-      .all(group.id) as UserRow[];
-    return { ...group, members: members.map(mapUser) };
-  });
+async function membersOf(db: Db, table: "friend_group_members" | "friend_list_members", key: "group_id" | "list_id", ids: number[]) {
+  if (!ids.length) return new Map<number, User[]>();
+  const rows = (await db.all(
+    `SELECT m.${key} AS owner_key, u.* FROM ${table} m JOIN profiles u ON u.id = m.user_id
+     WHERE m.${key} = ANY(?::int[]) ORDER BY u.display_name`,
+    [ids],
+  )) as (UserRow & { owner_key: number })[];
+  const map = new Map<number, User[]>();
+  for (const row of rows) {
+    const list = map.get(row.owner_key) ?? [];
+    list.push(mapUser(row));
+    map.set(row.owner_key, list);
+  }
+  return map;
 }
 
-export function listCustomLists(db: Database.Database, ownerId: number) {
-  const lists = db
-    .prepare("SELECT id, name, created_at FROM friend_lists WHERE owner_id = ? ORDER BY name")
-    .all(ownerId) as { id: number; name: string; created_at: string }[];
-  return lists.map((list) => {
-    const members = db
-      .prepare(
-        `SELECT u.* FROM friend_list_members m JOIN users u ON u.id = m.user_id
-         WHERE m.list_id = ? ORDER BY u.display_name`,
-      )
-      .all(list.id) as UserRow[];
-    return { ...list, members: members.map(mapUser) };
-  });
+export async function listGroups(db: Db, ownerId: number) {
+  const groups = (await db.all(
+    "SELECT id, name, allows_inbound_share, created_at FROM friend_groups WHERE owner_id = ? ORDER BY name",
+    [ownerId],
+  )) as { id: number; name: string; allows_inbound_share: number; created_at: string }[];
+  const members = await membersOf(
+    db,
+    "friend_group_members",
+    "group_id",
+    groups.map((group) => group.id),
+  );
+  return groups.map((group) => ({ ...group, members: members.get(group.id) ?? [] }));
 }
 
-export function pendingIncoming(db: Database.Database, userId: number) {
-  const rows = db
-    .prepare(
-      `SELECT f.id, u.* FROM friendships f JOIN users u ON u.id = f.requester_id
-       WHERE f.addressee_id = ? AND f.status = 'pending' ORDER BY f.created_at DESC`,
-    )
-    .all(userId) as (UserRow & { id: number })[];
+export async function listCustomLists(db: Db, ownerId: number) {
+  const lists = (await db.all("SELECT id, name, created_at FROM friend_lists WHERE owner_id = ? ORDER BY name", [ownerId])) as {
+    id: number;
+    name: string;
+    created_at: string;
+  }[];
+  const members = await membersOf(
+    db,
+    "friend_list_members",
+    "list_id",
+    lists.map((list) => list.id),
+  );
+  return lists.map((list) => ({ ...list, members: members.get(list.id) ?? [] }));
+}
+
+export async function pendingIncoming(db: Db, userId: number) {
+  const rows = await db.all(`SELECT f.id, u.* FROM friendships f JOIN profiles u ON u.id = f.requester_id
+       WHERE f.addressee_id = ? AND f.status = 'pending' ORDER BY f.created_at DESC`, [userId]) as (UserRow & { id: number })[];
   return rows.map((row) => ({ requestId: row.id, user: mapUser(row) }));
 }
 
-export function pendingOutgoing(db: Database.Database, userId: number) {
-  const rows = db
-    .prepare(
-      `SELECT f.id, u.* FROM friendships f JOIN users u ON u.id = f.addressee_id
-       WHERE f.requester_id = ? AND f.status = 'pending' ORDER BY f.created_at DESC`,
-    )
-    .all(userId) as (UserRow & { id: number })[];
+export async function pendingOutgoing(db: Db, userId: number) {
+  const rows = await db.all(`SELECT f.id, u.* FROM friendships f JOIN profiles u ON u.id = f.addressee_id
+       WHERE f.requester_id = ? AND f.status = 'pending' ORDER BY f.created_at DESC`, [userId]) as (UserRow & { id: number })[];
   return rows.map((row) => ({ requestId: row.id, user: mapUser(row) }));
 }
 
-export function listAllowIds(db: Database.Database, userId: number) {
-  const rows = db.prepare("SELECT allowed_id FROM share_allow WHERE user_id = ?").all(userId) as { allowed_id: number }[];
+export async function listAllowIds(db: Db, userId: number) {
+  const rows = await db.all("SELECT allowed_id FROM share_allow WHERE user_id = ?", [userId]) as { allowed_id: number }[];
   return new Set(rows.map((row) => row.allowed_id));
 }
 
-export function listBlocks(db: Database.Database, userId: number) {
-  const rows = db
-    .prepare(
-      `SELECT u.* FROM blocks b JOIN users u ON u.id = b.blocked_id
-       WHERE b.blocker_id = ? ORDER BY u.display_name`,
-    )
-    .all(userId) as UserRow[];
+export async function listBlocks(db: Db, userId: number) {
+  const rows = await db.all(`SELECT u.* FROM blocks b JOIN profiles u ON u.id = b.blocked_id
+       WHERE b.blocker_id = ? ORDER BY u.display_name`, [userId]) as UserRow[];
   return rows.map(mapUser);
 }
 
-export function requestFriend(db: Database.Database, fromId: number, toUsername: string) {
-  const from = mustUser(db, fromId);
+export async function requestFriend(db: Db, fromId: number, toUsername: string) {
+  const from = await mustUser(db, fromId);
   if (from.suspended) throw new Error("This account is suspended.");
-  const to = getUserByUsername(db, toUsername.trim().toLowerCase());
+  const to = await getUserByUsername(db, toUsername.trim().toLowerCase());
   if (!to) throw new Error("No one uses that username.");
   if (to.id === fromId) throw new Error("You are already yourself.");
-  if (isBlocked(db, fromId, to.id)) throw new Error("A block stops this request.");
-  if (areFriends(db, fromId, to.id)) throw new Error(`You and ${to.displayName} are already friends.`);
-  const existing = db
-    .prepare(
-      `SELECT id, status, requester_id FROM friendships
-       WHERE (requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?)`,
-    )
-    .get(fromId, to.id, to.id, fromId) as { id: number; status: string; requester_id: number } | undefined;
+  if (await isBlocked(db, fromId, to.id)) throw new Error("A block stops this request.");
+  if (await areFriends(db, fromId, to.id)) throw new Error(`You and ${to.displayName} are already friends.`);
+  const existing = await db.get(`SELECT id, status, requester_id FROM friendships
+       WHERE (requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?)`, [fromId, to.id, to.id, fromId]) as { id: number; status: string; requester_id: number } | undefined;
   if (existing?.status === "pending") {
     throw new Error("There is already a request between you.");
   }
   if (to.whoCanAdd === "nobody") {
     throw new Error(`${to.displayName} is not accepting friend requests.`);
   }
-  if (to.whoCanAdd === "friends_of_friends" && !sharesAFriend(db, fromId, to.id)) {
+  if (to.whoCanAdd === "friends_of_friends" && !await sharesAFriend(db, fromId, to.id)) {
     throw new Error(`${to.displayName} only accepts requests from friends of friends.`);
   }
-  db.prepare(
-    `INSERT INTO friendships (requester_id, addressee_id, status, created_at) VALUES (?, ?, 'pending', ?)`,
-  ).run(fromId, to.id, new Date().toISOString());
+  await db.run(`INSERT INTO friendships (requester_id, addressee_id, status, created_at) VALUES (?, ?, 'pending', ?)`, [fromId, to.id, new Date().toISOString()]);
   return to;
 }
 
-export function acceptFriend(db: Database.Database, userId: number, requestId: number) {
-  const row = db.prepare("SELECT * FROM friendships WHERE id = ?").get(requestId) as
+export async function acceptFriend(db: Db, userId: number, requestId: number) {
+  const row = await db.get("SELECT * FROM friendships WHERE id = ?", [requestId]) as
     | { id: number; requester_id: number; addressee_id: number; status: string }
     | undefined;
   if (!row || row.addressee_id !== userId || row.status !== "pending") {
     throw new Error("That request is not waiting on you.");
   }
-  db.prepare("UPDATE friendships SET status = 'accepted' WHERE id = ?").run(requestId);
+  await db.run("UPDATE friendships SET status = 'accepted' WHERE id = ?", [requestId]);
 }
 
-export function declineFriend(db: Database.Database, userId: number, requestId: number) {
-  const row = db.prepare("SELECT * FROM friendships WHERE id = ?").get(requestId) as
+export async function declineFriend(db: Db, userId: number, requestId: number) {
+  const row = await db.get("SELECT * FROM friendships WHERE id = ?", [requestId]) as
     | { addressee_id: number; requester_id: number; status: string }
     | undefined;
   if (!row || row.status !== "pending" || (row.addressee_id !== userId && row.requester_id !== userId)) {
     throw new Error("That request is not yours to close.");
   }
-  db.prepare("DELETE FROM friendships WHERE id = ?").run(requestId);
+  await db.run("DELETE FROM friendships WHERE id = ?", [requestId]);
 }
 
-export function removeFriend(db: Database.Database, userId: number, otherId: number) {
-  db.prepare(
-    `DELETE FROM friendships
+export async function removeFriend(db: Db, userId: number, otherId: number) {
+  await db.run(`DELETE FROM friendships
      WHERE status = 'accepted'
-       AND ((requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?))`,
-  ).run(userId, otherId, otherId, userId);
+       AND ((requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?))`, [userId, otherId, otherId, userId]);
 }
 
-export function blockUser(db: Database.Database, userId: number, otherId: number) {
+export async function blockUser(db: Db, userId: number, otherId: number) {
   if (userId === otherId) throw new Error("You cannot block yourself.");
-  mustUser(db, otherId);
+  await mustUser(db, otherId);
   const now = new Date().toISOString();
-  db.prepare("INSERT OR IGNORE INTO blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)").run(userId, otherId, now);
-  db.prepare(
-    `DELETE FROM friendships
-     WHERE (requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?)`,
-  ).run(userId, otherId, otherId, userId);
+  await db.run("INSERT INTO blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", [userId, otherId, now]);
+  await db.run(`DELETE FROM friendships
+     WHERE (requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?)`, [userId, otherId, otherId, userId]);
 }
 
-export function unblockUser(db: Database.Database, userId: number, otherId: number) {
-  db.prepare("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?").run(userId, otherId);
+export async function unblockUser(db: Db, userId: number, otherId: number) {
+  await db.run("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", [userId, otherId]);
 }
 
-export function createGroup(db: Database.Database, ownerId: number, name: string, memberIds: number[], allowsInbound: boolean) {
+export async function createGroup(db: Db, ownerId: number, name: string, memberIds: number[], allowsInbound: boolean) {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Name the group.");
-  const info = db
-    .prepare(
-      `INSERT INTO friend_groups (owner_id, name, allows_inbound_share, created_at) VALUES (?, ?, ?, ?)`,
-    )
-    .run(ownerId, trimmed.slice(0, 60), allowsInbound ? 1 : 0, new Date().toISOString());
-  const groupId = Number(info.lastInsertRowid);
+  const groupId = await db.insert(`INSERT INTO friend_groups (owner_id, name, allows_inbound_share, created_at) VALUES (?, ?, ?, ?)`, [ownerId, trimmed.slice(0, 60), allowsInbound ? 1 : 0, new Date().toISOString()]);
   for (const memberId of memberIds) {
-    if (!areFriends(db, ownerId, memberId)) continue;
-    db.prepare("INSERT OR IGNORE INTO friend_group_members (group_id, user_id) VALUES (?, ?)").run(groupId, memberId);
+    if (!await areFriends(db, ownerId, memberId)) continue;
+    await db.run("INSERT INTO friend_group_members (group_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING", [groupId, memberId]);
   }
   return groupId;
 }
 
-export function deleteGroup(db: Database.Database, ownerId: number, groupId: number) {
-  db.prepare("DELETE FROM friend_groups WHERE id = ? AND owner_id = ?").run(groupId, ownerId);
+export async function deleteGroup(db: Db, ownerId: number, groupId: number) {
+  await db.run("DELETE FROM friend_groups WHERE id = ? AND owner_id = ?", [groupId, ownerId]);
 }
 
-export function createList(db: Database.Database, ownerId: number, name: string, memberIds: number[]) {
+export async function createList(db: Db, ownerId: number, name: string, memberIds: number[]) {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Name the list.");
-  const info = db
-    .prepare("INSERT INTO friend_lists (owner_id, name, created_at) VALUES (?, ?, ?)")
-    .run(ownerId, trimmed.slice(0, 60), new Date().toISOString());
-  const listId = Number(info.lastInsertRowid);
+  const listId = await db.insert("INSERT INTO friend_lists (owner_id, name, created_at) VALUES (?, ?, ?)", [ownerId, trimmed.slice(0, 60), new Date().toISOString()]);
   for (const memberId of memberIds) {
-    if (!areFriends(db, ownerId, memberId)) continue;
-    db.prepare("INSERT OR IGNORE INTO friend_list_members (list_id, user_id) VALUES (?, ?)").run(listId, memberId);
+    if (!await areFriends(db, ownerId, memberId)) continue;
+    await db.run("INSERT INTO friend_list_members (list_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING", [listId, memberId]);
   }
   return listId;
 }
 
-export function deleteList(db: Database.Database, ownerId: number, listId: number) {
-  db.prepare("DELETE FROM friend_lists WHERE id = ? AND owner_id = ?").run(listId, ownerId);
+export async function deleteList(db: Db, ownerId: number, listId: number) {
+  await db.run("DELETE FROM friend_lists WHERE id = ? AND owner_id = ?", [listId, ownerId]);
 }
 
-export function updateProfile(
-  db: Database.Database,
+export async function updateProfile(db: Db,
   userId: number,
   input: { displayName: string; bio: string; avatarColor: string; location?: string; work?: string; education?: string },
 ) {
@@ -884,25 +814,20 @@ export function updateProfile(
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
-  db.prepare("UPDATE users SET display_name = ?, bio = ?, avatar_color = ?, initials = ? WHERE id = ?").run(
-    displayName.slice(0, 80),
+  await db.run("UPDATE profiles SET display_name = ?, bio = ?, avatar_color = ?, initials = ? WHERE id = ?", [displayName.slice(0, 80),
     input.bio.trim().slice(0, 280),
     input.avatarColor,
     initials || "•",
-    userId,
-  );
+    userId]);
   if (input.location !== undefined || input.work !== undefined || input.education !== undefined) {
-    db.prepare("UPDATE users SET location = ?, work = ?, education = ? WHERE id = ?").run(
-      (input.location ?? "").trim().slice(0, 80),
+    await db.run("UPDATE profiles SET location = ?, work = ?, education = ? WHERE id = ?", [(input.location ?? "").trim().slice(0, 80),
       (input.work ?? "").trim().slice(0, 80),
       (input.education ?? "").trim().slice(0, 80),
-      userId,
-    );
+      userId]);
   }
 }
 
-export function updatePrivacy(
-  db: Database.Database,
+export async function updatePrivacy(db: Db,
   userId: number,
   input: {
     whoCanShare: SharePolicy;
@@ -912,87 +837,109 @@ export function updatePrivacy(
     inboundGroupIds: number[];
   },
 ) {
-  db.prepare("UPDATE users SET who_can_share = ?, who_can_add = ?, who_can_reshare = ? WHERE id = ?").run(
-    input.whoCanShare,
+  await db.run("UPDATE profiles SET who_can_share = ?, who_can_add = ?, who_can_reshare = ? WHERE id = ?", [input.whoCanShare,
     input.whoCanAdd,
     input.whoCanReshare,
-    userId,
-  );
-  db.prepare("DELETE FROM share_allow WHERE user_id = ?").run(userId);
+    userId]);
+  await db.run("DELETE FROM share_allow WHERE user_id = ?", [userId]);
   for (const id of input.allowListIds) {
-    if (areFriends(db, userId, id)) {
-      db.prepare("INSERT OR IGNORE INTO share_allow (user_id, allowed_id) VALUES (?, ?)").run(userId, id);
+    if (await areFriends(db, userId, id)) {
+      await db.run("INSERT INTO share_allow (user_id, allowed_id) VALUES (?, ?) ON CONFLICT DO NOTHING", [userId, id]);
     }
   }
-  db.prepare("UPDATE friend_groups SET allows_inbound_share = 0 WHERE owner_id = ?").run(userId);
+  await db.run("UPDATE friend_groups SET allows_inbound_share = 0 WHERE owner_id = ?", [userId]);
   for (const groupId of input.inboundGroupIds) {
-    db.prepare("UPDATE friend_groups SET allows_inbound_share = 1 WHERE id = ? AND owner_id = ?").run(groupId, userId);
+    await db.run("UPDATE friend_groups SET allows_inbound_share = 1 WHERE id = ? AND owner_id = ?", [groupId, userId]);
   }
 }
 
-function reactionSummary(db: Database.Database, postId: number, viewerId: number): ReactionSummary {
-  const rows = db
-    .prepare(
-      `SELECT r.kind, COUNT(*) AS c FROM reactions r
-       WHERE r.post_id = ?
-         AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = ? AND b.blocked_id = r.user_id) OR (b.blocker_id = r.user_id AND b.blocked_id = ?))
-       GROUP BY r.kind ORDER BY c DESC`,
-    )
-    .all(postId, viewerId, viewerId) as { kind: ReactionKind; c: number }[];
-  const counts: Partial<Record<ReactionKind, number>> = {};
-  let total = 0;
-  for (const row of rows) {
-    counts[row.kind] = row.c;
-    total += row.c;
+const BLOCKED_EITHER_WAY = (column: string) =>
+  `NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = ? AND b.blocked_id = ${column}) OR (b.blocker_id = ${column} AND b.blocked_id = ?))`;
+
+/**
+ * Reaction, share and comment counts for many posts in four queries.
+ * Callers must have run the access check on every id first.
+ */
+async function engagementMany(db: Db, postIds: number[], viewerId: number): Promise<Map<number, Engagement>> {
+  const ids = [...new Set(postIds)];
+  const result = new Map<number, Engagement>();
+  for (const id of ids) {
+    result.set(id, {
+      likeCount: 0,
+      shareCount: 0,
+      liked: false,
+      commentCount: 0,
+      reactions: { total: 0, mine: null, top: [], counts: {} },
+    });
   }
-  const mine = db.prepare("SELECT kind FROM reactions WHERE post_id = ? AND user_id = ? LIMIT 1").get(postId, viewerId) as
-    | { kind: ReactionKind }
-    | undefined;
-  return { total, mine: mine?.kind ?? null, top: rows.map((row) => row.kind).slice(0, 3), counts };
+  if (!ids.length) return result;
+  const [reactionRows, mineRows, shareRows, commentRows] = await Promise.all([
+    db.all(
+      `SELECT r.post_id, r.kind, COUNT(*) AS c FROM reactions r
+       WHERE r.post_id = ANY(?::int[]) AND ${BLOCKED_EITHER_WAY("r.user_id")}
+       GROUP BY r.post_id, r.kind ORDER BY c DESC, r.kind`,
+      [ids, viewerId, viewerId],
+    ) as Promise<{ post_id: number; kind: ReactionKind; c: number }[]>,
+    db.all("SELECT post_id, kind FROM reactions WHERE post_id = ANY(?::int[]) AND user_id = ?", [ids, viewerId]) as Promise<
+      { post_id: number; kind: ReactionKind }[]
+    >,
+    db.all("SELECT post_id, COUNT(*) AS c FROM shares WHERE post_id = ANY(?::int[]) GROUP BY post_id", [ids]) as Promise<
+      { post_id: number; c: number }[]
+    >,
+    db.all(
+      `SELECT c.post_id, COUNT(*) AS c FROM comments c
+       WHERE c.post_id = ANY(?::int[]) AND ${BLOCKED_EITHER_WAY("c.author_id")}
+       GROUP BY c.post_id`,
+      [ids, viewerId, viewerId],
+    ) as Promise<{ post_id: number; c: number }[]>,
+  ]);
+  for (const row of reactionRows) {
+    const item = result.get(row.post_id)!;
+    item.reactions.counts[row.kind] = row.c;
+    item.reactions.total += row.c;
+    if (item.reactions.top.length < 3) item.reactions.top.push(row.kind);
+    item.likeCount = item.reactions.total;
+  }
+  for (const row of mineRows) {
+    const item = result.get(row.post_id)!;
+    item.reactions.mine = row.kind;
+    item.liked = true;
+  }
+  for (const row of shareRows) result.get(row.post_id)!.shareCount = row.c;
+  for (const row of commentRows) result.get(row.post_id)!.commentCount = row.c;
+  return result;
 }
 
-function engagement(db: Database.Database, postId: number, viewerId: number): Engagement {
-  const reactions = reactionSummary(db, postId, viewerId);
-  const shareCount = (db.prepare("SELECT COUNT(*) AS c FROM shares WHERE post_id = ?").get(postId) as { c: number }).c;
-  const commentCount = (
-    db
-      .prepare(
-        `SELECT COUNT(*) AS c FROM comments c
-         WHERE c.post_id = ?
-           AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = ? AND b.blocked_id = c.author_id) OR (b.blocker_id = c.author_id AND b.blocked_id = ?))`,
-      )
-      .get(postId, viewerId, viewerId) as { c: number }
-  ).c;
-  return { likeCount: reactions.total, shareCount, liked: reactions.mine !== null, reactions, commentCount };
+async function engagement(db: Db, postId: number, viewerId: number): Promise<Engagement> {
+  return (await engagementMany(db, [postId], viewerId)).get(postId)!;
 }
 
 /** Counts for a post, or null when the viewer cannot see it. */
-export function postEngagement(db: Database.Database, viewerId: number, postId: number) {
-  if (!canViewPost(db, viewerId, postId)) return null;
+export async function postEngagement(db: Db, viewerId: number, postId: number) {
+  if (!(await canViewPost(db, viewerId, postId))) return null;
   return engagement(db, postId, viewerId);
 }
 
 /** One reaction per person per post. Passing null clears it. Only people who can see the post can react. */
-export function setReaction(db: Database.Database, userId: number, postId: number, kind: ReactionKind | null) {
-  if (!canViewPost(db, userId, postId)) throw new Error("That post isn’t available to you.");
+export async function setReaction(db: Db, userId: number, postId: number, kind: ReactionKind | null) {
+  if (!(await canViewPost(db, userId, postId))) throw new Error("That post isn’t available to you.");
   if (kind !== null && !REACTION_KINDS.includes(kind)) throw new Error("Pick a reaction.");
-  const write = db.transaction(() => {
-    db.prepare("DELETE FROM reactions WHERE user_id = ? AND post_id = ?").run(userId, postId);
+  await db.tx(async (db) => {
+    await db.run("DELETE FROM reactions WHERE user_id = ? AND post_id = ?", [userId, postId]);
     if (kind) {
-      db.prepare("INSERT INTO reactions (user_id, post_id, kind, created_at) VALUES (?, ?, ?, ?)").run(
+      await db.run("INSERT INTO reactions (user_id, post_id, kind, created_at) VALUES (?, ?, ?, ?)", [
         userId,
         postId,
         kind,
         new Date().toISOString(),
-      );
+      ]);
     }
   });
-  write();
   return engagement(db, postId, userId);
 }
 
-export function toggleLike(db: Database.Database, userId: number, postId: number) {
-  const current = reactionSummary(db, postId, userId).mine;
+export async function toggleLike(db: Db, userId: number, postId: number) {
+  const current = (await engagement(db, postId, userId)).reactions.mine;
   return setReaction(db, userId, postId, current ? null : "like");
 }
 
@@ -1006,63 +953,58 @@ export type CommentNode = {
 };
 
 /** Comments on a post, oldest first, replies nested one level. Null when the viewer cannot see the post. */
-export function listComments(
-  db: Database.Database,
+export async function listComments(
+  db: Db,
   viewerId: number,
   postId: number,
   options: { allowStaff?: boolean } = {},
-): CommentNode[] | null {
-  if (!canViewPost(db, viewerId, postId, options)) return null;
-  const rows = db
-    .prepare(
-      `SELECT c.* FROM comments c
-       WHERE c.post_id = ?
-         AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = ? AND b.blocked_id = c.author_id) OR (b.blocker_id = c.author_id AND b.blocked_id = ?))
-       ORDER BY c.created_at ASC, c.id ASC`,
-    )
-    .all(postId, viewerId, viewerId) as {
-    id: number;
-    post_id: number;
-    author_id: number;
-    parent_id: number | null;
-    body: string;
-    created_at: string;
-  }[];
+): Promise<CommentNode[] | null> {
+  if (!(await canViewPost(db, viewerId, postId, options))) return null;
+  const rows = (await db.all(
+    `SELECT c.* FROM comments c
+     WHERE c.post_id = ? AND ${BLOCKED_EITHER_WAY("c.author_id")}
+     ORDER BY c.created_at ASC, c.id ASC`,
+    [postId, viewerId, viewerId],
+  )) as { id: number; post_id: number; author_id: number; parent_id: number | null; body: string; created_at: string }[];
+  const authors = await usersByIds(
+    db,
+    rows.map((row) => row.author_id),
+  );
   const nodes = new Map<number, CommentNode>();
   const top: CommentNode[] = [];
-  for (const row of rows) {
+  rows.forEach((row, index) => {
     const node: CommentNode = {
       id: row.id,
       postId: row.post_id,
       body: row.body,
       createdAt: row.created_at,
-      author: mustUser(db, row.author_id),
+      author: authors[index],
       replies: [],
     };
     nodes.set(row.id, node);
     const parent = row.parent_id ? nodes.get(row.parent_id) : undefined;
     if (parent) parent.replies.push(node);
     else if (!row.parent_id) top.push(node);
-  }
+  });
   return top;
 }
 
-export function addComment(
-  db: Database.Database,
+export async function addComment(
+  db: Db,
   userId: number,
   postId: number,
   input: { body: string; parentId?: number | null; createdAt?: string },
 ) {
-  const user = mustUser(db, userId);
+  const user = await mustUser(db, userId);
   if (user.suspended || user.restricted) throw new Error("Your account cannot comment right now.");
-  if (!canViewPost(db, userId, postId)) throw new Error("That post isn’t available to you.");
+  if (!(await canViewPost(db, userId, postId))) throw new Error("That post isn’t available to you.");
   const body = input.body.trim();
   if (!body) throw new Error("Write a comment first.");
   if (body.length > 1000) throw new Error("Keep comments under 1,000 characters.");
   let parentId: number | null = null;
   let parentAuthor: number | null = null;
   if (input.parentId) {
-    const parent = db.prepare("SELECT id, post_id, parent_id, author_id FROM comments WHERE id = ?").get(input.parentId) as
+    const parent = (await db.get("SELECT id, post_id, parent_id, author_id FROM comments WHERE id = ?", [input.parentId])) as
       | { id: number; post_id: number; parent_id: number | null; author_id: number }
       | undefined;
     if (!parent || parent.post_id !== postId) throw new Error("That comment isn’t on this post.");
@@ -1070,16 +1012,24 @@ export function addComment(
     parentAuthor = parent.author_id;
   }
   const createdAt = input.createdAt ?? new Date().toISOString();
-  const info = db
-    .prepare("INSERT INTO comments (post_id, author_id, parent_id, body, created_at) VALUES (?, ?, ?, ?, ?)")
-    .run(postId, userId, parentId, body, createdAt);
-  const post = getPost(db, postId)!;
-  const notify = db.prepare(
-    "INSERT INTO notifications (user_id, actor_id, kind, post_id, share_id, read, created_at) VALUES (?, ?, ?, ?, NULL, 0, ?)",
-  );
-  if (parentAuthor && parentAuthor !== userId) notify.run(parentAuthor, userId, "replied", postId, createdAt);
-  if (post.authorId !== userId && post.authorId !== parentAuthor) notify.run(post.authorId, userId, "commented", postId, createdAt);
-  return Number(info.lastInsertRowid);
+  const post = (await getPost(db, postId))!;
+  return db.tx(async (db) => {
+    const id = await db.insert("INSERT INTO comments (post_id, author_id, parent_id, body, created_at) VALUES (?, ?, ?, ?, ?)", [
+      postId,
+      userId,
+      parentId,
+      body,
+      createdAt,
+    ]);
+    const notify = (to: number, kind: string) =>
+      db.run(
+        "INSERT INTO notifications (user_id, actor_id, kind, post_id, share_id, read, created_at) VALUES (?, ?, ?, ?, NULL, 0, ?)",
+        [to, userId, kind, postId, createdAt],
+      );
+    if (parentAuthor && parentAuthor !== userId) await notify(parentAuthor, "replied");
+    if (post.authorId !== userId && post.authorId !== parentAuthor) await notify(post.authorId, "commented");
+    return id;
+  });
 }
 
 export type ProfileSection = "posts" | "photos" | "videos" | "reels";
@@ -1100,61 +1050,76 @@ export type ProfilePost = Engagement & {
  * A person's posts as the viewer is allowed to see them.
  * Your own profile shows everything you made. Anyone else's shows only what reached you.
  */
-export function profilePosts(
-  db: Database.Database,
+export async function profilePosts(
+  db: Db,
   viewerId: number,
   personId: number,
   section: ProfileSection = "posts",
-): ProfilePost[] {
-  if (!canViewProfile(db, viewerId, personId)) return [];
+): Promise<ProfilePost[]> {
+  if (!(await canViewProfile(db, viewerId, personId))) return [];
   const kinds = section === "posts" ? null : SECTION_KINDS[section];
-  const rows = db
-    .prepare("SELECT * FROM posts WHERE author_id = ? AND hidden = 0 ORDER BY created_at DESC, id DESC")
-    .all(personId) as PostRow[];
-  return rows
-    .filter((row) => !kinds || kinds.includes(row.kind as PostKind))
-    .filter((row) => canViewPost(db, viewerId, { id: row.id, authorId: row.author_id, hidden: row.hidden }))
-    .map((row) => {
+  const rows = (await db.all("SELECT * FROM posts WHERE author_id = ? AND hidden = 0 ORDER BY created_at DESC, id DESC", [
+    personId,
+  ])) as PostRow[];
+  const candidates = rows.filter((row) => !kinds || kinds.includes(row.kind as PostKind));
+  const allowed = await Promise.all(
+    candidates.map((row) => canViewPost(db, viewerId, { id: row.id, authorId: row.author_id, hidden: row.hidden })),
+  );
+  const visible = candidates.filter((_, index) => allowed[index]);
+  const counts = await engagementMany(
+    db,
+    visible.map((row) => row.id),
+    viewerId,
+  );
+  return Promise.all(
+    visible.map(async (row) => {
       let reachedBy: User | null = null;
       if (viewerId !== personId) {
-        const share = db
-          .prepare("SELECT from_user_id FROM shares WHERE post_id = ? AND to_user_id = ? ORDER BY created_at DESC, id DESC LIMIT 1")
-          .get(row.id, viewerId) as { from_user_id: number } | undefined;
-        reachedBy = share ? mustUser(db, share.from_user_id) : null;
+        const share = (await db.get(
+          "SELECT from_user_id FROM shares WHERE post_id = ? AND to_user_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+          [row.id, viewerId],
+        )) as { from_user_id: number } | undefined;
+        reachedBy = share ? await mustUser(db, share.from_user_id) : null;
       }
-      return { post: mapPost(row), reachedBy, ...engagement(db, row.id, viewerId) };
-    });
+      return { post: mapPost(row), reachedBy, ...counts.get(row.id)! };
+    }),
+  );
 }
 
 /** Kept for older callers. Same rule as profilePosts. */
-export function postsVisibleTo(db: Database.Database, viewerId: number, personId: number) {
+export async function postsVisibleTo(db: Db, viewerId: number, personId: number) {
   return profilePosts(db, viewerId, personId);
 }
 
-export function mutualFriends(db: Database.Database, a: number, b: number) {
+export async function mutualFriends(db: Db, a: number, b: number) {
   if (a === b) return [];
-  const mine = new Set(friendIds(db, a));
-  return friendIds(db, b)
-    .filter((id) => mine.has(id))
-    .map((id) => mustUser(db, id))
-    .sort((x, y) => x.displayName.localeCompare(y.displayName));
+  const [mine, theirs] = await Promise.all([friendIds(db, a), friendIds(db, b)]);
+  const set = new Set(mine);
+  return (await usersByIds(
+    db,
+    theirs.filter((id) => set.has(id)),
+  )).sort((x, y) => x.displayName.localeCompare(y.displayName));
 }
 
-export function profileStats(db: Database.Database, viewerId: number, personId: number) {
-  const friends = friendIds(db, personId).length;
-  const posts = profilePosts(db, viewerId, personId).length;
-  const total = (
-    db.prepare("SELECT COUNT(*) AS c FROM posts WHERE author_id = ? AND hidden = 0").get(personId) as { c: number }
-  ).c;
-  const shares =
+export async function profileStats(db: Db, viewerId: number, personId: number) {
+  const [friendList, posts, totalRow, sharesRow, mutual] = await Promise.all([
+    friendIds(db, personId),
+    profilePosts(db, viewerId, personId),
+    db.get("SELECT COUNT(*) AS c FROM posts WHERE author_id = ? AND hidden = 0", [personId]) as Promise<{ c: number }>,
     viewerId === personId
-      ? (db.prepare("SELECT COUNT(*) AS c FROM shares WHERE from_user_id = ?").get(personId) as { c: number }).c
-      : (
-          db
-            .prepare("SELECT COUNT(*) AS c FROM shares WHERE from_user_id = ? AND to_user_id = ?")
-            .get(personId, viewerId) as { c: number }
-        ).c;
-  return { friends, posts, shares, mutual: mutualFriends(db, viewerId, personId).length, unseen: Math.max(0, total - posts) };
+      ? (db.get("SELECT COUNT(*) AS c FROM shares WHERE from_user_id = ?", [personId]) as Promise<{ c: number }>)
+      : (db.get("SELECT COUNT(*) AS c FROM shares WHERE from_user_id = ? AND to_user_id = ?", [personId, viewerId]) as Promise<{
+          c: number;
+        }>),
+    mutualFriends(db, viewerId, personId),
+  ]);
+  return {
+    friends: friendList.length,
+    posts: posts.length,
+    shares: sharesRow.c,
+    mutual: mutual.length,
+    unseen: Math.max(0, totalRow.c - posts.length),
+  };
 }
 
 export type ReelItem = Engagement & {
@@ -1165,121 +1130,138 @@ export type ReelItem = Engagement & {
   at: string;
 };
 
-function reelItem(db: Database.Database, viewerId: number, row: PostRow): ReelItem {
-  const share = db
-    .prepare("SELECT from_user_id, note, created_at FROM shares WHERE post_id = ? AND to_user_id = ? ORDER BY created_at DESC, id DESC LIMIT 1")
-    .get(row.id, viewerId) as { from_user_id: number; note: string | null; created_at: string } | undefined;
-  const author = mustUser(db, row.author_id);
-  const reachedBy = share && share.from_user_id !== viewerId ? mustUser(db, share.from_user_id) : null;
-  return {
-    post: mapPost(row),
-    author,
-    reachedBy,
-    note: share?.note ?? null,
-    at: share?.created_at ?? row.created_at,
-    ...engagement(db, row.id, viewerId),
-  };
+async function reelItems(db: Db, viewerId: number, rows: PostRow[]): Promise<ReelItem[]> {
+  const counts = await engagementMany(
+    db,
+    rows.map((row) => row.id),
+    viewerId,
+  );
+  return Promise.all(
+    rows.map(async (row) => {
+      const share = (await db.get(
+        "SELECT from_user_id, note, created_at FROM shares WHERE post_id = ? AND to_user_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+        [row.id, viewerId],
+      )) as { from_user_id: number; note: string | null; created_at: string } | undefined;
+      const author = await mustUser(db, row.author_id);
+      const reachedBy = share && share.from_user_id !== viewerId ? await mustUser(db, share.from_user_id) : null;
+      return {
+        post: mapPost(row),
+        author,
+        reachedBy,
+        note: share?.note ?? null,
+        at: share?.created_at ?? row.created_at,
+        ...counts.get(row.id)!,
+      };
+    }),
+  );
 }
 
 /** Reels that reached the viewer, plus their own. Never a discovery feed. */
-export function listReels(db: Database.Database, viewerId: number): ReelItem[] {
-  const rows = db
-    .prepare("SELECT * FROM posts WHERE kind IN ('reel', 'short') AND hidden = 0 ORDER BY created_at DESC, id DESC")
-    .all() as PostRow[];
-  return rows
-    .filter((row) => canViewPost(db, viewerId, { id: row.id, authorId: row.author_id, hidden: row.hidden }))
-    .map((row) => reelItem(db, viewerId, row))
-    .sort((a, b) => b.at.localeCompare(a.at));
+export async function listReels(db: Db, viewerId: number): Promise<ReelItem[]> {
+  // Only reels the viewer made or that were addressed to them are even loaded; the gate still checks each one.
+  const rows = (await db.all(
+    `SELECT p.* FROM posts p
+     WHERE p.kind IN ('reel', 'short') AND p.hidden = 0
+       AND (p.author_id = ? OR EXISTS (SELECT 1 FROM shares s WHERE s.post_id = p.id AND s.to_user_id = ?))
+     ORDER BY p.created_at DESC, p.id DESC`,
+    [viewerId, viewerId],
+  )) as PostRow[];
+  const allowed = await Promise.all(
+    rows.map((row) => canViewPost(db, viewerId, { id: row.id, authorId: row.author_id, hidden: row.hidden })),
+  );
+  const items = await reelItems(
+    db,
+    viewerId,
+    rows.filter((_, index) => allowed[index]),
+  );
+  return items.sort((a, b) => b.at.localeCompare(a.at));
 }
 
 /** One reel by id. Null when it is not a reel or the viewer cannot see it. */
-export function getReel(db: Database.Database, viewerId: number, postId: number) {
-  const row = db.prepare("SELECT * FROM posts WHERE id = ? AND kind IN ('reel', 'short')").get(postId) as PostRow | undefined;
+export async function getReel(db: Db, viewerId: number, postId: number) {
+  const row = (await db.get("SELECT * FROM posts WHERE id = ? AND kind IN ('reel', 'short')", [postId])) as PostRow | undefined;
   if (!row) return null;
-  if (!canViewPost(db, viewerId, { id: row.id, authorId: row.author_id, hidden: row.hidden })) return null;
-  return reelItem(db, viewerId, row);
+  if (!(await canViewPost(db, viewerId, { id: row.id, authorId: row.author_id, hidden: row.hidden }))) return null;
+  return (await reelItems(db, viewerId, [row]))[0];
 }
 
-export type PersonCard = { user: User; mutual: User[]; relationship: ReturnType<typeof relationship> };
+export type Relationship = "self" | "blocked" | "blocked_by" | "friends" | "none" | "outgoing" | "incoming";
+export type PersonCard = { user: User; mutual: User[]; relationship: Relationship };
 
 /** People you may know, by mutual friends only. Never based on content. */
-export function friendSuggestions(db: Database.Database, userId: number, limit = 8): PersonCard[] {
-  const mine = new Set(friendIds(db, userId));
+export async function friendSuggestions(db: Db, userId: number, limit = 8): Promise<PersonCard[]> {
+  const mine = new Set(await friendIds(db, userId));
   const candidates = new Set<number>();
-  for (const friend of mine) for (const id of friendIds(db, friend)) candidates.add(id);
-  const cards: PersonCard[] = [];
-  for (const id of candidates) {
-    if (id === userId || mine.has(id)) continue;
-    const rel = relationship(db, userId, id);
-    if (rel !== "none") continue;
-    const user = mustUser(db, id);
-    if (user.suspended || user.whoCanAdd === "nobody") continue;
-    cards.push({ user, mutual: mutualFriends(db, userId, id), relationship: rel });
+  for (const ids of await Promise.all([...mine].map((friend) => friendIds(db, friend)))) {
+    for (const id of ids) candidates.add(id);
   }
+  const cards = await Promise.all(
+    [...candidates]
+      .filter((id) => id !== userId && !mine.has(id))
+      .map(async (id): Promise<PersonCard | null> => {
+        const rel = await relationship(db, userId, id);
+        if (rel !== "none") return null;
+        const user = await mustUser(db, id);
+        if (user.suspended || user.whoCanAdd === "nobody") return null;
+        return { user, mutual: await mutualFriends(db, userId, id), relationship: rel };
+      }),
+  );
   return cards
+    .filter((card): card is PersonCard => card !== null)
     .sort((a, b) => b.mutual.length - a.mutual.length || a.user.displayName.localeCompare(b.user.displayName))
     .slice(0, limit);
 }
 
 /** Find people by name or username. Returns people only, never posts. */
-export function searchPeople(db: Database.Database, viewerId: number, query: string, limit = 20): PersonCard[] {
+export async function searchPeople(db: Db, viewerId: number, query: string, limit = 20): Promise<PersonCard[]> {
   const q = query.trim().toLowerCase().replace(/^@/, "");
   if (q.length < 1) return [];
-  const like = `%${q.replace(/[%_]/g, "")}%`;
-  const rows = db
-    .prepare(
-      `SELECT * FROM users
-       WHERE (lower(display_name) LIKE ? OR lower(username) LIKE ?)
-         AND id != ?
-         AND NOT EXISTS (SELECT 1 FROM blocks WHERE blocker_id = users.id AND blocked_id = ?)
-       ORDER BY display_name LIMIT ?`,
-    )
-    .all(like, like, viewerId, viewerId, limit) as UserRow[];
-  return rows.map((row) => {
-    const user = mapUser(row);
-    return { user, mutual: mutualFriends(db, viewerId, user.id), relationship: relationship(db, viewerId, user.id) };
-  });
+  const like = `%${q.replace(/[%_\\]/g, "")}%`;
+  const rows = (await db.all(
+    `SELECT * FROM profiles
+     WHERE (lower(display_name) LIKE ? OR lower(username) LIKE ?)
+       AND id <> ?
+       AND NOT EXISTS (SELECT 1 FROM blocks WHERE blocker_id = profiles.id AND blocked_id = ?)
+     ORDER BY display_name LIMIT ?`,
+    [like, like, viewerId, viewerId, limit],
+  )) as UserRow[];
+  return Promise.all(
+    rows.map(async (row) => {
+      const user = mapUser(row);
+      const [mutual, rel] = await Promise.all([mutualFriends(db, viewerId, user.id), relationship(db, viewerId, user.id)]);
+      return { user, mutual, relationship: rel };
+    }),
+  );
 }
 
-export function setAllowReshare(db: Database.Database, userId: number, postId: number, allow: boolean) {
-  const post = getPost(db, postId);
+export async function setAllowReshare(db: Db, userId: number, postId: number, allow: boolean) {
+  const post = await getPost(db, postId);
   if (!post || post.authorId !== userId) throw new Error("Only the creator can change resharing.");
-  db.prepare("UPDATE posts SET allow_reshare = ? WHERE id = ?").run(allow ? 1 : 0, postId);
+  await db.run("UPDATE posts SET allow_reshare = ? WHERE id = ?", [allow ? 1 : 0, postId]);
 }
 
-export function relationship(db: Database.Database, viewerId: number, otherId: number) {
+export async function relationship(db: Db, viewerId: number, otherId: number): Promise<Relationship> {
   if (viewerId === otherId) return "self" as const;
-  if (isBlocked(db, viewerId, otherId)) {
-    const iBlocked = db
-      .prepare("SELECT 1 AS ok FROM blocks WHERE blocker_id = ? AND blocked_id = ?")
-      .get(viewerId, otherId);
+  if (await isBlocked(db, viewerId, otherId)) {
+    const iBlocked = await db.get("SELECT 1 AS ok FROM blocks WHERE blocker_id = ? AND blocked_id = ?", [viewerId, otherId]);
     return iBlocked ? ("blocked" as const) : ("blocked_by" as const);
   }
-  if (areFriends(db, viewerId, otherId)) return "friends" as const;
-  const pending = db
-    .prepare(
-      `SELECT requester_id FROM friendships
+  if (await areFriends(db, viewerId, otherId)) return "friends" as const;
+  const pending = await db.get(`SELECT requester_id FROM friendships
        WHERE status = 'pending'
-         AND ((requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?))`,
-    )
-    .get(viewerId, otherId, otherId, viewerId) as { requester_id: number } | undefined;
+         AND ((requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?))`, [viewerId, otherId, otherId, viewerId]) as { requester_id: number } | undefined;
   if (!pending) return "none" as const;
   return pending.requester_id === viewerId ? ("outgoing" as const) : ("incoming" as const);
 }
 
-export function listNotifications(db: Database.Database, userId: number) {
-  const rows = db
-    .prepare(
-      `SELECT n.*, u.display_name AS actor_name, u.username AS actor_username, u.initials AS actor_initials,
-              u.avatar_color AS actor_color, p.kind AS post_kind, p.body AS post_body, p.media_label AS post_label,
-              p.media_tone AS post_tone
+export async function listNotifications(db: Db, userId: number) {
+  const rows = await db.all(`SELECT n.*, u.display_name AS actor_name, u.username AS actor_username, u.initials AS actor_initials,
+              u.avatar_color AS actor_color, p.kind AS post_kind, p.body AS post_body, p.frames AS post_frames
        FROM notifications n
-       JOIN users u ON u.id = n.actor_id
+       JOIN profiles u ON u.id = n.actor_id
        LEFT JOIN posts p ON p.id = n.post_id
        WHERE n.user_id = ?
-       ORDER BY n.created_at DESC, n.id DESC`,
-    )
-    .all(userId) as {
+       ORDER BY n.created_at DESC, n.id DESC`, [userId]) as {
     id: number;
     kind: string;
     actor_id: number;
@@ -1290,8 +1272,7 @@ export function listNotifications(db: Database.Database, userId: number) {
     post_id: number | null;
     post_kind: string | null;
     post_body: string | null;
-    post_label: string | null;
-    post_tone: string | null;
+    post_frames: Frame[] | null;
     read: number;
     created_at: string;
   }[];
@@ -1305,39 +1286,31 @@ export function listNotifications(db: Database.Database, userId: number) {
   });
 }
 
-export function unreadCount(db: Database.Database, userId: number) {
-  const row = db
-    .prepare("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND read = 0")
-    .get(userId) as { c: number };
+export async function unreadCount(db: Db, userId: number) {
+  const row = await db.get("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND read = 0", [userId]) as { c: number };
   return row.c;
 }
 
-export function markNotificationRead(db: Database.Database, userId: number, notificationId: number) {
-  const row = db
-    .prepare("SELECT id, post_id FROM notifications WHERE id = ? AND user_id = ?")
-    .get(notificationId, userId) as { id: number; post_id: number | null } | undefined;
+export async function markNotificationRead(db: Db, userId: number, notificationId: number) {
+  const row = await db.get("SELECT id, post_id FROM notifications WHERE id = ? AND user_id = ?", [notificationId, userId]) as { id: number; post_id: number | null } | undefined;
   if (!row) return null;
-  db.prepare("UPDATE notifications SET read = 1 WHERE id = ?").run(notificationId);
+  await db.run("UPDATE notifications SET read = 1 WHERE id = ?", [notificationId]);
   return row.post_id;
 }
 
-export function markAllNotificationsRead(db: Database.Database, userId: number) {
-  db.prepare("UPDATE notifications SET read = 1 WHERE user_id = ?").run(userId);
+export async function markAllNotificationsRead(db: Db, userId: number) {
+  await db.run("UPDATE notifications SET read = 1 WHERE user_id = ?", [userId]);
 }
 
-export function shareHistory(db: Database.Database, postId: number) {
-  return db
-    .prepare(
-      `SELECT s.id, s.created_at, s.note, s.share_kind, s.to_user_id, s.from_user_id,
+export async function shareHistory(db: Db, postId: number) {
+  return await db.all(`SELECT s.id, s.created_at, s.note, s.share_kind, s.to_user_id, s.from_user_id,
               fu.display_name AS from_name, tu.display_name AS to_name, g.name AS group_name
        FROM shares s
-       JOIN users fu ON fu.id = s.from_user_id
-       JOIN users tu ON tu.id = s.to_user_id
+       JOIN profiles fu ON fu.id = s.from_user_id
+       JOIN profiles tu ON tu.id = s.to_user_id
        LEFT JOIN friend_groups g ON g.id = s.group_id
        WHERE s.post_id = ?
-       ORDER BY s.created_at ASC, s.id ASC`,
-    )
-    .all(postId) as {
+       ORDER BY s.created_at ASC, s.id ASC`, [postId]) as {
     id: number;
     created_at: string;
     note: string | null;
@@ -1350,17 +1323,13 @@ export function shareHistory(db: Database.Database, postId: number) {
   }[];
 }
 
-export function sentActivity(db: Database.Database, userId: number) {
-  return db
-    .prepare(
-      `SELECT s.created_at, s.to_user_id, tu.display_name AS to_name, p.kind, p.id AS post_id
+export async function sentActivity(db: Db, userId: number) {
+  return await db.all(`SELECT s.created_at, s.to_user_id, tu.display_name AS to_name, p.kind, p.id AS post_id
        FROM shares s
-       JOIN users tu ON tu.id = s.to_user_id
+       JOIN profiles tu ON tu.id = s.to_user_id
        JOIN posts p ON p.id = s.post_id
        WHERE s.from_user_id = ?
-       ORDER BY s.created_at DESC LIMIT 8`,
-    )
-    .all(userId) as {
+       ORDER BY s.created_at DESC LIMIT 8`, [userId]) as {
     created_at: string;
     to_user_id: number;
     to_name: string;
@@ -1369,17 +1338,15 @@ export function sentActivity(db: Database.Database, userId: number) {
   }[];
 }
 
-export function createTicket(db: Database.Database, userId: number, subject: string, body: string) {
+export async function createTicket(db: Db, userId: number, subject: string, body: string) {
   const title = subject.trim();
   const text = body.trim();
   if (title.length < 3) throw new Error("Add a subject.");
   if (text.length < 3) throw new Error("Say a little more so support can help.");
-  db.prepare("INSERT INTO tickets (user_id, subject, body, status, created_at) VALUES (?, ?, ?, 'open', ?)").run(
-    userId,
+  await db.run("INSERT INTO tickets (user_id, subject, body, status, created_at) VALUES (?, ?, ?, 'open', ?)", [userId,
     title.slice(0, 120),
     text.slice(0, 2000),
-    new Date().toISOString(),
-  );
+    new Date().toISOString()]);
 }
 
 export type ShareTarget = {
@@ -1397,63 +1364,59 @@ export type ShareTarget = {
  * Who the signed-in person may pick in the share sheet, with the gate result for each friend.
  * The gate is checked again when the share is written, so this is advice for the picker only.
  */
-export function shareTargets(db: Database.Database, viewer: User, post: Post) {
-  const sent = new Set(
-    (
-      db.prepare("SELECT to_user_id FROM shares WHERE post_id = ? AND from_user_id = ?").all(post.id, viewer.id) as {
-        to_user_id: number;
-      }[]
-    ).map((row) => row.to_user_id),
+export async function shareTargets(db: Db, viewer: User, post: Post) {
+  const sentRows = (await db.all("SELECT to_user_id FROM shares WHERE post_id = ? AND from_user_id = ?", [post.id, viewer.id])) as {
+    to_user_id: number;
+  }[];
+  const sent = new Set(sentRows.map((row) => row.to_user_id));
+  const friendList = await listFriends(db, viewer.id);
+  const friends: ShareTarget[] = await Promise.all(
+    friendList.map(async (friend) => {
+      const decision = await canShareWith(db, viewer.id, friend.id, post);
+      return {
+        id: friend.id,
+        username: friend.username,
+        displayName: friend.displayName,
+        initials: friend.initials,
+        avatarColor: friend.avatarColor,
+        ok: decision.ok && !sent.has(friend.id),
+        reason: sent.has(friend.id) ? "Already sent" : decision.ok ? null : decision.reason,
+        alreadySent: sent.has(friend.id),
+      };
+    }),
   );
-  const friends: ShareTarget[] = listFriends(db, viewer.id).map((friend) => {
-    const decision = canShareWith(db, viewer.id, friend.id, post);
-    return {
-      id: friend.id,
-      username: friend.username,
-      displayName: friend.displayName,
-      initials: friend.initials,
-      avatarColor: friend.avatarColor,
-      ok: decision.ok && !sent.has(friend.id),
-      reason: sent.has(friend.id) ? "Already sent" : decision.ok ? null : decision.reason,
-      alreadySent: sent.has(friend.id),
-    };
-  });
   friends.sort((a, b) => Number(b.ok) - Number(a.ok) || a.displayName.localeCompare(b.displayName));
-  const self = canShareWith(db, viewer.id, viewer.id, post);
+  const [self, groups, lists] = await Promise.all([
+    canShareWith(db, viewer.id, viewer.id, post),
+    listGroups(db, viewer.id),
+    listCustomLists(db, viewer.id),
+  ]);
   const pack = (members: User[]) =>
     members.map((member) => ({ id: member.id, displayName: member.displayName, initials: member.initials, avatarColor: member.avatarColor }));
   return {
     friends,
-    groups: listGroups(db, viewer.id).map((group) => ({ id: group.id, name: group.name, members: pack(group.members) })),
-    lists: listCustomLists(db, viewer.id).map((list) => ({ id: list.id, name: list.name, members: pack(list.members) })),
-    self: { ok: self.ok && !sent.has(viewer.id), reason: sent.has(viewer.id) ? "Already on your timeline" : self.ok ? null : self.reason },
+    groups: groups.map((group) => ({ id: group.id, name: group.name, members: pack(group.members) })),
+    lists: lists.map((list) => ({ id: list.id, name: list.name, members: pack(list.members) })),
+    self: { ok: self.ok && !sent.has(viewer.id), reason: sent.has(viewer.id) ? "Already in your feed" : self.ok ? null : self.reason },
   };
 }
 
 /** Friends to show in the desktop rail: people you can pass things to, and how often you have. Not a feed. */
-export function shareCircle(db: Database.Database, userId: number) {
-  return listFriends(db, userId)
+export async function shareCircle(db: Db, userId: number) {
+  const friends = await listFriends(db, userId);
+  const rows = (await db.all(
+    `SELECT from_user_id, to_user_id, COUNT(*) AS c FROM shares
+     WHERE (from_user_id = ? OR to_user_id = ?) AND from_user_id <> to_user_id
+     GROUP BY from_user_id, to_user_id`,
+    [userId, userId],
+  )) as { from_user_id: number; to_user_id: number; c: number }[];
+  return friends
     .map((friend) => {
-      const sentTo = (
-        db.prepare("SELECT COUNT(*) AS c FROM shares WHERE from_user_id = ? AND to_user_id = ?").get(userId, friend.id) as { c: number }
-      ).c;
-      const got = (
-        db.prepare("SELECT COUNT(*) AS c FROM shares WHERE from_user_id = ? AND to_user_id = ?").get(friend.id, userId) as { c: number }
-      ).c;
+      const sentTo = rows.find((row) => row.from_user_id === userId && row.to_user_id === friend.id)?.c ?? 0;
+      const got = rows.find((row) => row.from_user_id === friend.id && row.to_user_id === userId)?.c ?? 0;
       return { user: friend, sentTo, got, open: friend.whoCanShare !== "nobody" && !friend.suspended };
     })
     .sort((a, b) => b.sentTo + b.got - (a.sentTo + a.got) || a.user.displayName.localeCompare(b.user.displayName));
 }
-
-export const MEDIA_PLATES = [
-  { id: "market", label: "North hall, morning light", tone: "#ffb703,#fb8500" },
-  { id: "river", label: "River path after rain", tone: "#48cae4,#0077b6" },
-  { id: "kitchen", label: "Kitchen table, late", tone: "#ff8fab,#fb6f92" },
-  { id: "street", label: "Side street at dusk", tone: "#7b2cbf,#c77dff" },
-  { id: "creek", label: "Creek under the bridge", tone: "#2ec4b6,#1a936f" },
-  { id: "buns", label: "Tray of cardamom buns", tone: "#f4a261,#e76f51" },
-  { id: "skate", label: "Painted skate bowl", tone: "#ff5d8f,#ff9e00" },
-  { id: "loaf", label: "Cracked loaf, warm", tone: "#e09f3e,#9c6644" },
-] as const;
 
 export const AVATAR_COLORS = ["#00bf8f", "#24527a", "#e05a33", "#8a5a2b", "#6b3a55", "#7b2cbf", "#c44b7a", "#2f2f2f"];

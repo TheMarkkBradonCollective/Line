@@ -118,16 +118,22 @@ export default async function FriendsPage({
   const query = await searchParams;
   const tab: Tab = (["friends", "requests", "groups", "privacy"] as const).find((id) => id === query.tab) ?? "friends";
   const db = getDb();
-  const friends = listFriends(db, user.id);
-  const groups = listGroups(db, user.id);
-  const lists = listCustomLists(db, user.id);
-  const incoming = pendingIncoming(db, user.id);
-  const outgoing = pendingOutgoing(db, user.id);
-  const blocks = listBlocks(db, user.id);
-  const allowIds = listAllowIds(db, user.id);
-  const suggestions = tab === "friends" ? friendSuggestions(db, user.id, 6) : [];
+  const friends = await listFriends(db, user.id);
+  const groups = await listGroups(db, user.id);
+  const lists = await listCustomLists(db, user.id);
+  const incoming = await pendingIncoming(db, user.id);
+  const outgoing = await pendingOutgoing(db, user.id);
+  const blocks = await listBlocks(db, user.id);
+  const allowIds = await listAllowIds(db, user.id);
+  const suggestions = tab === "friends" ? await friendSuggestions(db, user.id, 6) : [];
+  const mutualCounts = new Map<number, number>();
+  await Promise.all(
+    [...friends, ...incoming.map((item) => item.user)].map(async (person) => {
+      mutualCounts.set(person.id, (await mutualFriends(db, user.id, person.id)).length);
+    }),
+  );
   const mutualLine = (person: User) => {
-    const count = mutualFriends(db, user.id, person.id).length;
+    const count = mutualCounts.get(person.id) ?? 0;
     return count ? `${count} mutual ${count === 1 ? "friend" : "friends"}` : `@${person.username}`;
   };
 
@@ -203,8 +209,16 @@ export default async function FriendsPage({
 
           <Section title={`Your friends · ${friends.length}`}>
             {friends.length === 0 ? (
-              <EmptyState icon={Users} title="No friends yet">
-                Add someone by their username. They’ll get a request.
+              <EmptyState
+                icon={Users}
+                title="No friends yet"
+                action={
+                  <Link href="/search" className="press inline-flex h-11 items-center gap-2 rounded-full bg-brand px-5 text-[15px] font-semibold text-brand-on shadow-glow">
+                    Find people
+                  </Link>
+                }
+              >
+                Search for people by name, or add someone by their username. They’ll get a request.
               </EmptyState>
             ) : (
               <div className="surface-card divide-y divide-line/70 overflow-hidden">

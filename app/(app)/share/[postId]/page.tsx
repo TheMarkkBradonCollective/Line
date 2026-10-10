@@ -20,8 +20,8 @@ export default async function SharePage({
   const { postId } = await params;
   const query = await searchParams;
   const db = getDb();
-  const post = getPost(db, Number(postId));
-  if (!post || !canViewPost(db, user, post) || post.hidden) notFound();
+  const post = await getPost(db, Number(postId));
+  if (!post || !await canViewPost(db, user, post) || post.hidden) notFound();
 
   return (
     <div className="pt-4 md:pt-6">
@@ -36,7 +36,7 @@ export default async function SharePage({
         <form action={shareExistingAction} className="mx-4 mt-6 grid gap-4 md:mx-0">
           <input type="hidden" name="postId" value={post.id} />
           <input className="field" name="note" maxLength={200} placeholder="Optional note" aria-label="Note" />
-          <RecipientPicker friends={listFriends(db, user.id)} groups={listGroups(db, user.id)} lists={listCustomLists(db, user.id)} />
+          <RecipientPicker friends={await listFriends(db, user.id)} groups={await listGroups(db, user.id)} lists={await listCustomLists(db, user.id)} />
           <Button type="submit" size="lg">
             Share
           </Button>

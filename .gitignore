@@ -6,10 +6,10 @@ dist
 *.log
 .DS_Store
 
-# SQLite lives on the machine that runs LINE. The seed recreates it.
-data/*.sqlite
-data/*.sqlite-shm
-data/*.sqlite-wal
+# Local secrets. .env.example is the template.
+.env
+.env.local
+.env*.local
 
 # Android build outputs. The project is committed; the APK is not.
 android/.gradle

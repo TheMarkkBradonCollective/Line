@@ -16,9 +16,9 @@ export async function AppShell({ children }: { children: ReactNode }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
   const db = getDb();
-  const unread = unreadCount(db, user.id);
-  const requests = pendingIncoming(db, user.id).length;
-  const staff = listPermissions(db, user.id).length > 0;
+  const unread = await unreadCount(db, user.id);
+  const requests = (await pendingIncoming(db, user.id)).length;
+  const staff = (await listPermissions(db, user.id)).length > 0;
   const role = ROLE_LABELS[user.role as Role] ?? user.role;
 
   if (user.suspended) {
@@ -118,7 +118,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
         </main>
 
         <aside className="sticky top-0 hidden h-dvh overflow-y-auto py-6 no-scrollbar xl:block" aria-label="Share with friends">
-          <RightRail circle={shareCircle(db, user.id)} suggestions={friendSuggestions(db, user.id, 3)} requests={requests} />
+          <RightRail circle={await shareCircle(db, user.id)} suggestions={await friendSuggestions(db, user.id, 3)} requests={requests} />
         </aside>
       </div>
       <TabBar requests={requests} />

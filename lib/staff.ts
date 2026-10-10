@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./db";
 import {
   isPermission,
   isRole,
@@ -19,8 +19,7 @@ function requireReason(reason: string) {
   return text.slice(0, 500);
 }
 
-export function writeAudit(
-  db: Database.Database,
+export async function writeAudit(db: Db,
   actor: StaffActor,
   input: {
     action: string;
@@ -32,12 +31,9 @@ export function writeAudit(
     caseId?: number | null;
   },
 ) {
-  db.prepare(
-    `INSERT INTO audit_log
+  await db.run(`INSERT INTO audit_log
       (staff_id, staff_role, action, target_type, target_id, reason, previous_state, new_state, case_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    actor.id,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [actor.id,
     actor.role,
     input.action,
     input.targetType ?? null,
@@ -46,40 +42,37 @@ export function writeAudit(
     input.previousState ?? null,
     input.newState ?? null,
     input.caseId ?? null,
-    new Date().toISOString(),
-  );
+    new Date().toISOString()]);
 }
 
-function gate(db: Database.Database, actor: StaffActor, permission: Permission) {
-  if (!hasPermission(db, actor.id, permission)) {
+async function gate(db: Db, actor: StaffActor, permission: Permission) {
+  if (!await hasPermission(db, actor.id, permission)) {
     throw new Error("That panel is closed. Your account does not have this permission.");
   }
 }
 
-export function searchAccounts(db: Database.Database, actor: StaffActor, query: string) {
-  gate(db, actor, "view_user_account");
+export async function searchAccounts(db: Db, actor: StaffActor, query: string) {
+  await gate(db, actor, "view_user_account");
   const q = query.trim().toLowerCase();
-  const rows = db
-    .prepare(
-      `SELECT * FROM users
+  const rows = await db.all(`SELECT * FROM profiles
        WHERE username LIKE ? OR lower(display_name) LIKE ?
-       ORDER BY display_name LIMIT 30`,
-    )
-    .all(`%${q}%`, `%${q}%`) as UserRow[];
-  return rows.map((row) => ({
-    user: mapUser(row),
-    permissions: listPermissions(db, row.id),
-  }));
+       ORDER BY display_name LIMIT 30`, [`%${q}%`, `%${q}%`]) as UserRow[];
+  return Promise.all(
+    rows.map(async (row) => ({
+      user: mapUser(row),
+      permissions: await listPermissions(db, row.id),
+    })),
+  );
 }
 
-export function restrictAccount(db: Database.Database, actor: StaffActor, userId: number, restricted: boolean, reason: string) {
-  gate(db, actor, "restrict_accounts");
-  const user = mustUser(db, userId);
+export async function restrictAccount(db: Db, actor: StaffActor, userId: number, restricted: boolean, reason: string) {
+  await gate(db, actor, "restrict_accounts");
+  const user = await mustUser(db, userId);
   if (user.id === actor.id) throw new Error("You cannot restrict your own account.");
   const previous = user.restricted ? "restricted" : "open";
   const next = restricted ? "restricted" : "open";
-  db.prepare("UPDATE users SET restricted = ? WHERE id = ?").run(restricted ? 1 : 0, userId);
-  writeAudit(db, actor, {
+  await db.run("UPDATE profiles SET restricted = ? WHERE id = ?", [restricted ? 1 : 0, userId]);
+  await writeAudit(db, actor, {
     action: restricted ? "restrict_account" : "lift_restriction",
     reason,
     targetType: "user",
@@ -89,17 +82,17 @@ export function restrictAccount(db: Database.Database, actor: StaffActor, userId
   });
 }
 
-export function suspendAccount(db: Database.Database, actor: StaffActor, userId: number, suspended: boolean, reason: string) {
-  gate(db, actor, "suspend_accounts");
-  const user = mustUser(db, userId);
+export async function suspendAccount(db: Db, actor: StaffActor, userId: number, suspended: boolean, reason: string) {
+  await gate(db, actor, "suspend_accounts");
+  const user = await mustUser(db, userId);
   if (user.id === actor.id) throw new Error("You cannot suspend your own account.");
-  if (hasPermission(db, user.id, "platform_ownership") && !hasPermission(db, actor.id, "platform_ownership")) {
+  if (await hasPermission(db, user.id, "platform_ownership") && !await hasPermission(db, actor.id, "platform_ownership")) {
     throw new Error("Only the founder seat can suspend an owner.");
   }
   const previous = user.suspended ? "suspended" : "active";
   const next = suspended ? "suspended" : "active";
-  db.prepare("UPDATE users SET suspended = ? WHERE id = ?").run(suspended ? 1 : 0, userId);
-  writeAudit(db, actor, {
+  await db.run("UPDATE profiles SET suspended = ? WHERE id = ?", [suspended ? 1 : 0, userId]);
+  await writeAudit(db, actor, {
     action: suspended ? "suspend_account" : "restore_account",
     reason,
     targetType: "user",
@@ -109,13 +102,13 @@ export function suspendAccount(db: Database.Database, actor: StaffActor, userId:
   });
 }
 
-export function hidePost(db: Database.Database, actor: StaffActor, postId: number, reason: string) {
-  gate(db, actor, "moderate_content");
-  const post = getPost(db, postId);
+export async function hidePost(db: Db, actor: StaffActor, postId: number, reason: string) {
+  await gate(db, actor, "moderate_content");
+  const post = await getPost(db, postId);
   if (!post) throw new Error("No such post.");
   const why = requireReason(reason);
-  db.prepare("UPDATE posts SET hidden = 1, hidden_reason = ? WHERE id = ?").run(why, postId);
-  writeAudit(db, actor, {
+  await db.run("UPDATE posts SET hidden = 1, hidden_reason = ? WHERE id = ?", [why, postId]);
+  await writeAudit(db, actor, {
     action: "hide_content",
     reason: why,
     targetType: "post",
@@ -125,12 +118,12 @@ export function hidePost(db: Database.Database, actor: StaffActor, postId: numbe
   });
 }
 
-export function restorePost(db: Database.Database, actor: StaffActor, postId: number, reason: string) {
-  gate(db, actor, "moderate_content");
-  const post = getPost(db, postId);
+export async function restorePost(db: Db, actor: StaffActor, postId: number, reason: string) {
+  await gate(db, actor, "moderate_content");
+  const post = await getPost(db, postId);
   if (!post) throw new Error("No such post.");
-  db.prepare("UPDATE posts SET hidden = 0, hidden_reason = NULL WHERE id = ?").run(postId);
-  writeAudit(db, actor, {
+  await db.run("UPDATE posts SET hidden = 0, hidden_reason = NULL WHERE id = ?", [postId]);
+  await writeAudit(db, actor, {
     action: "restore_content",
     reason,
     targetType: "post",
@@ -140,8 +133,7 @@ export function restorePost(db: Database.Database, actor: StaffActor, postId: nu
   });
 }
 
-export function createReport(
-  db: Database.Database,
+export async function createReport(db: Db,
   reporterId: number,
   input: { targetType: string; targetId: number; category: string; details: string },
 ) {
@@ -150,14 +142,9 @@ export function createReport(
   if (!types.has(input.targetType)) throw new Error("Choose what you are reporting.");
   if (!categories.has(input.category)) throw new Error("Choose a reason.");
   const now = new Date().toISOString();
-  const info = db
-    .prepare(
-      `INSERT INTO reports
+  return db.insert(`INSERT INTO reports
         (reporter_id, target_type, target_id, category, details, status, queue, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'open', 'moderator', ?, ?)`,
-    )
-    .run(reporterId, input.targetType, input.targetId, input.category, input.details.trim().slice(0, 1000), now, now);
-  return Number(info.lastInsertRowid);
+       VALUES (?, ?, ?, ?, ?, 'open', 'moderator', ?, ?)`, [reporterId, input.targetType, input.targetId, input.category, input.details.trim().slice(0, 1000), now, now]);
 }
 
 export type ReportRecord = {
@@ -176,8 +163,7 @@ export type ReportRecord = {
   targetLabel: string;
 };
 
-function mapReport(
-  db: Database.Database,
+async function mapReport(db: Db,
   row: {
     id: number;
     reporter_id: number;
@@ -192,16 +178,16 @@ function mapReport(
     created_at: string;
     updated_at: string;
   },
-): ReportRecord {
+): Promise<ReportRecord> {
   let targetLabel = `${row.target_type} #${row.target_id}`;
   if (row.target_type === "post" || row.target_type === "video") {
-    const post = getPost(db, row.target_id);
+    const post = await getPost(db, row.target_id);
     if (post) {
-      const author = getUserById(db, post.authorId);
+      const author = await getUserById(db, post.authorId);
       targetLabel = `${post.kind} by ${author?.displayName ?? "someone"}: ${post.body.slice(0, 80)}`;
     }
   } else if (row.target_type === "profile" || row.target_type === "account" || row.target_type === "message") {
-    const user = getUserById(db, row.target_id);
+    const user = await getUserById(db, row.target_id);
     if (user) targetLabel = `${user.displayName} (@${user.username})`;
   }
   return {
@@ -221,53 +207,45 @@ function mapReport(
   };
 }
 
-export function listReports(db: Database.Database, actor: StaffActor) {
-  const queues = queuesForPermissions(listPermissions(db, actor.id));
+export async function listReports(db: Db, actor: StaffActor) {
+  const queues = queuesForPermissions(await listPermissions(db, actor.id));
   if (queues.length === 0) return [];
   const placeholders = queues.map(() => "?").join(", ");
-  const rows = db
-    .prepare(
-      `SELECT r.*, u.display_name AS reporter_name
-       FROM reports r JOIN users u ON u.id = r.reporter_id
+  const rows = await db.all(`SELECT r.*, u.display_name AS reporter_name
+       FROM reports r JOIN profiles u ON u.id = r.reporter_id
        WHERE r.queue IN (${placeholders}) AND r.status != 'resolved'
-       ORDER BY r.updated_at DESC`,
-    )
-    .all(...queues) as Parameters<typeof mapReport>[1][];
-  return rows.map((row) => mapReport(db, row));
+       ORDER BY r.updated_at DESC`, [...queues]) as Parameters<typeof mapReport>[1][];
+  return Promise.all(rows.map((row) => mapReport(db, row)));
 }
 
-export function listResolvedReports(db: Database.Database, actor: StaffActor) {
-  if (!hasPermission(db, actor.id, "review_reports") && !hasPermission(db, actor.id, "access_audit_logs")) {
+export async function listResolvedReports(db: Db, actor: StaffActor) {
+  if (!await hasPermission(db, actor.id, "review_reports") && !await hasPermission(db, actor.id, "access_audit_logs")) {
     return [];
   }
-  const rows = db
-    .prepare(
-      `SELECT r.*, u.display_name AS reporter_name
-       FROM reports r JOIN users u ON u.id = r.reporter_id
+  const rows = await db.all(`SELECT r.*, u.display_name AS reporter_name
+       FROM reports r JOIN profiles u ON u.id = r.reporter_id
        WHERE r.status = 'resolved'
-       ORDER BY r.updated_at DESC LIMIT 20`,
-    )
-    .all() as Parameters<typeof mapReport>[1][];
-  return rows.map((row) => mapReport(db, row));
+       ORDER BY r.updated_at DESC LIMIT 20`) as Parameters<typeof mapReport>[1][];
+  return Promise.all(rows.map((row) => mapReport(db, row)));
 }
 
-function reportRow(db: Database.Database, id: number) {
-  return db.prepare("SELECT * FROM reports WHERE id = ?").get(id) as
+async function reportRow(db: Db, id: number) {
+  return await db.get("SELECT * FROM reports WHERE id = ?", [id]) as
     | { id: number; queue: Queue; status: string; target_type: string; target_id: number }
     | undefined;
 }
 
-function assertQueueAccess(db: Database.Database, actor: StaffActor, queue: Queue) {
-  const queues = queuesForPermissions(listPermissions(db, actor.id));
+async function assertQueueAccess(db: Db, actor: StaffActor, queue: Queue) {
+  const queues = queuesForPermissions(await listPermissions(db, actor.id));
   if (!queues.includes(queue)) {
     throw new Error("This case is in a queue your permissions do not open.");
   }
 }
 
-export function escalateReport(db: Database.Database, actor: StaffActor, reportId: number, reason: string, toQueue?: Queue) {
-  const report = reportRow(db, reportId);
+export async function escalateReport(db: Db, actor: StaffActor, reportId: number, reason: string, toQueue?: Queue) {
+  const report = await reportRow(db, reportId);
   if (!report || report.status === "resolved") throw new Error("That case is not open.");
-  assertQueueAccess(db, actor, report.queue);
+  await assertQueueAccess(db, actor, report.queue);
   const ladder: Queue[] = ["moderator", "senior_moderator", "manager", "director", "administrator", "founder"];
   const index = ladder.indexOf(report.queue);
   let next: Queue;
@@ -283,8 +261,8 @@ export function escalateReport(db: Database.Database, actor: StaffActor, reportI
   }
   const why = requireReason(reason);
   const now = new Date().toISOString();
-  db.prepare("UPDATE reports SET queue = ?, status = 'escalated', updated_at = ? WHERE id = ?").run(next, now, reportId);
-  writeAudit(db, actor, {
+  await db.run("UPDATE reports SET queue = ?, status = 'escalated', updated_at = ? WHERE id = ?", [next, now, reportId]);
+  await writeAudit(db, actor, {
     action: "escalate_report",
     reason: why,
     targetType: report.target_type,
@@ -295,14 +273,14 @@ export function escalateReport(db: Database.Database, actor: StaffActor, reportI
   });
 }
 
-export function resolveReport(db: Database.Database, actor: StaffActor, reportId: number, reason: string) {
-  const report = reportRow(db, reportId);
+export async function resolveReport(db: Db, actor: StaffActor, reportId: number, reason: string) {
+  const report = await reportRow(db, reportId);
   if (!report || report.status === "resolved") throw new Error("That case is already closed.");
-  assertQueueAccess(db, actor, report.queue);
+  await assertQueueAccess(db, actor, report.queue);
   const why = requireReason(reason);
   const now = new Date().toISOString();
-  db.prepare("UPDATE reports SET status = 'resolved', resolution = ?, updated_at = ? WHERE id = ?").run(why, now, reportId);
-  writeAudit(db, actor, {
+  await db.run("UPDATE reports SET status = 'resolved', resolution = ?, updated_at = ? WHERE id = ?", [why, now, reportId]);
+  await writeAudit(db, actor, {
     action: "resolve_report",
     reason: why,
     targetType: report.target_type,
@@ -313,15 +291,11 @@ export function resolveReport(db: Database.Database, actor: StaffActor, reportId
   });
 }
 
-export function listTickets(db: Database.Database, actor: StaffActor) {
-  gate(db, actor, "manage_support_tickets");
-  return db
-    .prepare(
-      `SELECT t.*, u.display_name AS user_name, u.username
-       FROM tickets t JOIN users u ON u.id = t.user_id
-       ORDER BY CASE t.status WHEN 'open' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, t.created_at DESC`,
-    )
-    .all() as {
+export async function listTickets(db: Db, actor: StaffActor) {
+  await gate(db, actor, "manage_support_tickets");
+  return await db.all(`SELECT t.*, u.display_name AS user_name, u.username
+       FROM tickets t JOIN profiles u ON u.id = t.user_id
+       ORDER BY CASE t.status WHEN 'open' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, t.created_at DESC`) as {
     id: number;
     user_id: number;
     user_name: string;
@@ -333,15 +307,15 @@ export function listTickets(db: Database.Database, actor: StaffActor) {
   }[];
 }
 
-export function updateTicket(db: Database.Database, actor: StaffActor, ticketId: number, status: string, reason: string) {
-  gate(db, actor, "manage_support_tickets");
+export async function updateTicket(db: Db, actor: StaffActor, ticketId: number, status: string, reason: string) {
+  await gate(db, actor, "manage_support_tickets");
   if (!["open", "pending", "closed"].includes(status)) throw new Error("Unknown ticket status.");
-  const ticket = db.prepare("SELECT id, status, user_id FROM tickets WHERE id = ?").get(ticketId) as
+  const ticket = await db.get("SELECT id, status, user_id FROM tickets WHERE id = ?", [ticketId]) as
     | { id: number; status: string; user_id: number }
     | undefined;
   if (!ticket) throw new Error("No such ticket.");
-  db.prepare("UPDATE tickets SET status = ?, assignee_id = ? WHERE id = ?").run(status, actor.id, ticketId);
-  writeAudit(db, actor, {
+  await db.run("UPDATE tickets SET status = ?, assignee_id = ? WHERE id = ?", [status, actor.id, ticketId]);
+  await writeAudit(db, actor, {
     action: "update_ticket",
     reason,
     targetType: "ticket",
@@ -351,15 +325,11 @@ export function updateTicket(db: Database.Database, actor: StaffActor, ticketId:
   });
 }
 
-export function listAudit(db: Database.Database, actor: StaffActor) {
-  gate(db, actor, "access_audit_logs");
-  return db
-    .prepare(
-      `SELECT a.*, u.display_name AS staff_name, u.username AS staff_username
-       FROM audit_log a JOIN users u ON u.id = a.staff_id
-       ORDER BY a.created_at DESC, a.id DESC LIMIT 200`,
-    )
-    .all() as {
+export async function listAudit(db: Db, actor: StaffActor) {
+  await gate(db, actor, "access_audit_logs");
+  return await db.all(`SELECT a.*, u.display_name AS staff_name, u.username AS staff_username
+       FROM audit_log a JOIN profiles u ON u.id = a.staff_id
+       ORDER BY a.created_at DESC, a.id DESC LIMIT 200`) as {
     id: number;
     staff_id: number;
     staff_name: string;
@@ -386,16 +356,14 @@ const SETTING_GATES: Record<string, Permission> = {
   security_note: "manage_security_settings",
 };
 
-export function updateSetting(db: Database.Database, actor: StaffActor, key: string, value: string, reason: string) {
+export async function updateSetting(db: Db, actor: StaffActor, key: string, value: string, reason: string) {
   const permission = SETTING_GATES[key];
   if (!permission) throw new Error("That setting is not editable.");
-  gate(db, actor, permission);
-  const previous = (db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value ?? "";
-  db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
-    key,
-    value.slice(0, 500),
-  );
-  writeAudit(db, actor, {
+  await gate(db, actor, permission);
+  const previous = (await db.get("SELECT value FROM settings WHERE key = ?", [key]) as { value: string } | undefined)?.value ?? "";
+  await db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key,
+    value.slice(0, 500)]);
+  await writeAudit(db, actor, {
     action: "update_setting",
     reason,
     targetType: "setting",
@@ -405,15 +373,13 @@ export function updateSetting(db: Database.Database, actor: StaffActor, key: str
   });
 }
 
-export function listStaff(db: Database.Database, actor: StaffActor) {
-  gate(db, actor, "manage_staff");
-  return listUsers(db)
-    .filter((user) => user.role !== "user")
-    .map((user) => ({ user, permissions: listPermissions(db, user.id) }));
+export async function listStaff(db: Db, actor: StaffActor) {
+  await gate(db, actor, "manage_staff");
+  const staff = (await listUsers(db)).filter((user) => user.role !== "user");
+  return Promise.all(staff.map(async (user) => ({ user, permissions: await listPermissions(db, user.id) })));
 }
 
-export function createStaffAccount(
-  db: Database.Database,
+export async function createStaffAccount(db: Db,
   actor: StaffActor,
   input: {
     username: string;
@@ -423,59 +389,48 @@ export function createStaffAccount(
     reason: string;
   },
 ) {
-  gate(db, actor, "create_staff_accounts");
+  await gate(db, actor, "create_staff_accounts");
   if (!isRole(input.role) || input.role === "user") throw new Error("Choose a staff role label.");
-  if (input.role === "founder" && !hasPermission(db, actor.id, "platform_ownership")) {
+  if (input.role === "founder" && !await hasPermission(db, actor.id, "platform_ownership")) {
     throw new Error("Administrator is not the owner. Only the founder seat can name another founder.");
   }
-  const username = input.username.trim().toLowerCase();
-  if (!/^[a-z0-9.]{3,32}$/.test(username)) throw new Error("Usernames are lowercase letters, numbers, and dots.");
-  if (getUserByUsername(db, username)) throw new Error("That username is taken.");
-  const displayName = input.displayName.trim();
-  if (displayName.length < 2) throw new Error("Give the account a name.");
+  // Staff seats go to people who already signed up, so every staff member signs in with their own password.
+  const username = input.username.trim().toLowerCase().replace(/^@/, "");
+  const person = await getUserByUsername(db, username);
+  if (!person) throw new Error("No one uses that username. They need to sign up first.");
+  if (person.role !== "user") throw new Error(`${person.displayName} already holds a staff seat. Change it from their row instead.`);
+  if (person.suspended) throw new Error("That account is suspended.");
   const granted = uniquePermissions(input.permissions);
-  assertGrantable(db, actor, granted);
-  const initials = displayName
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-  const info = db
-    .prepare(
-      `INSERT INTO users
-        (username, display_name, bio, avatar_color, initials, role, who_can_share, who_can_add, who_can_reshare, created_at)
-       VALUES (?, ?, ?, '#24527a', ?, ?, 'friends', 'everyone', 'recipients', ?)`,
-    )
-    .run(
-      username,
-      displayName.slice(0, 80),
-      "Staff account. Access comes from explicit permissions.",
-      initials || "S",
-      input.role,
-      new Date().toISOString(),
-    );
-  const userId = Number(info.lastInsertRowid);
-  replacePermissions(db, userId, granted);
-  writeAudit(db, actor, {
+  await assertGrantable(db, actor, granted);
+  const userId = person.id;
+  const displayName = input.displayName.trim();
+  if (displayName && displayName.length < 2) throw new Error("Give the seat a name people will recognize.");
+  await db.run("UPDATE profiles SET role = ?, display_name = ? WHERE id = ?", [
+    input.role,
+    (displayName || person.displayName).slice(0, 80),
+    userId,
+  ]);
+  await replacePermissions(db, userId, granted);
+  await writeAudit(db, actor, {
     action: "create_staff_account",
     reason: input.reason,
     targetType: "user",
     targetId: userId,
-    previousState: "absent",
+    previousState: "user",
     newState: `${input.role}: ${granted.join(", ") || "none"}`,
   });
   return userId;
 }
 
-export function modifyRole(db: Database.Database, actor: StaffActor, userId: number, role: string, reason: string) {
-  gate(db, actor, "modify_roles");
+export async function modifyRole(db: Db, actor: StaffActor, userId: number, role: string, reason: string) {
+  await gate(db, actor, "modify_roles");
   if (!isRole(role)) throw new Error("Unknown role.");
-  if ((role === "founder" || hasPermission(db, mustUser(db, userId).id, "platform_ownership")) && !hasPermission(db, actor.id, "platform_ownership")) {
+  if ((role === "founder" || (await hasPermission(db, (await mustUser(db, userId)).id, "platform_ownership"))) && !(await hasPermission(db, actor.id, "platform_ownership"))) {
     throw new Error("Changing the founder seat requires platform ownership.");
   }
-  const user = mustUser(db, userId);
-  db.prepare("UPDATE users SET role = ? WHERE id = ?").run(role, userId);
-  writeAudit(db, actor, {
+  const user = await mustUser(db, userId);
+  await db.run("UPDATE profiles SET role = ? WHERE id = ?", [role, userId]);
+  await writeAudit(db, actor, {
     action: "modify_role",
     reason,
     targetType: "user",
@@ -485,23 +440,22 @@ export function modifyRole(db: Database.Database, actor: StaffActor, userId: num
   });
 }
 
-export function modifyPermissions(
-  db: Database.Database,
+export async function modifyPermissions(db: Db,
   actor: StaffActor,
   userId: number,
   permissions: string[],
   reason: string,
 ) {
-  gate(db, actor, "modify_permissions");
-  const user = mustUser(db, userId);
+  await gate(db, actor, "modify_permissions");
+  const user = await mustUser(db, userId);
   const granted = uniquePermissions(permissions);
-  if (user.id === actor.id && !granted.includes("modify_permissions") && !hasPermission(db, actor.id, "platform_ownership")) {
+  if (user.id === actor.id && !granted.includes("modify_permissions") && !await hasPermission(db, actor.id, "platform_ownership")) {
     throw new Error("You cannot remove your own permission to modify permissions.");
   }
-  assertGrantable(db, actor, granted);
-  const previous = listPermissions(db, userId);
-  replacePermissions(db, userId, granted);
-  writeAudit(db, actor, {
+  await assertGrantable(db, actor, granted);
+  const previous = await listPermissions(db, userId);
+  await replacePermissions(db, userId, granted);
+  await writeAudit(db, actor, {
     action: "modify_permissions",
     reason,
     targetType: "user",
@@ -516,26 +470,27 @@ function uniquePermissions(values: string[]) {
   return PERMISSIONS.filter((permission) => granted.includes(permission));
 }
 
-function assertGrantable(db: Database.Database, actor: StaffActor, granted: readonly string[]) {
+async function assertGrantable(db: Db, actor: StaffActor, granted: readonly string[]) {
   for (const permission of granted) {
-    if (permission === "platform_ownership" && !hasPermission(db, actor.id, "platform_ownership")) {
+    if (permission === "platform_ownership" && !await hasPermission(db, actor.id, "platform_ownership")) {
       throw new Error("Platform ownership is not an administrator privilege.");
     }
-    if (!hasPermission(db, actor.id, permission)) {
+    if (!await hasPermission(db, actor.id, permission)) {
       throw new Error("You can only grant a permission you hold.");
     }
   }
 }
 
-function replacePermissions(db: Database.Database, userId: number, granted: readonly string[]) {
-  db.prepare("DELETE FROM permissions WHERE user_id = ?").run(userId);
-  const insert = db.prepare("INSERT INTO permissions (user_id, permission) VALUES (?, ?)");
-  for (const permission of granted) insert.run(userId, permission);
+async function replacePermissions(db: Db, userId: number, granted: readonly string[]) {
+  await db.run("DELETE FROM permissions WHERE user_id = ?", [userId]);
+  for (const permission of granted) {
+    await db.run("INSERT INTO permissions (user_id, permission) VALUES (?, ?)", [userId, permission]);
+  }
 }
 
-export function lookupPost(db: Database.Database, actor: StaffActor, postId: number) {
-  gate(db, actor, "view_reported_content");
-  return getPost(db, postId);
+export async function lookupPost(db: Db, actor: StaffActor, postId: number) {
+  await gate(db, actor, "view_reported_content");
+  return await getPost(db, postId);
 }
 
 export function roleRank(role: string) {

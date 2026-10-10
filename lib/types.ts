@@ -24,16 +24,19 @@ export type User = {
 /** short and long_video are older names. New posts are text, photo, video, or reel. */
 export type PostKind = "text" | "photo" | "video" | "short" | "long_video" | "reel";
 
-export type Frame = { label: string; tone: string };
+/** One uploaded file in the private line-media bucket. */
+export type Frame = { path: string; mime: string };
+
+export function isVideoFrame(frame: Frame) {
+  return frame.mime.startsWith("video/");
+}
 
 export type Post = {
   id: number;
   authorId: number;
   kind: PostKind;
   body: string;
-  mediaLabel: string | null;
-  mediaTone: string | null;
-  /** Every frame of the post. Photo posts can have several; video and reels have one. */
+  /** Every uploaded file of the post. Photo posts can have several; video and reels have one. Text posts have none. */
   frames: Frame[];
   allowReshare: number;
   hidden: number;
@@ -66,9 +69,7 @@ export type PostRow = {
   author_id: number;
   kind: PostKind;
   body: string;
-  media_label: string | null;
-  media_tone: string | null;
-  photos?: string | null;
+  frames: Frame[] | string | null;
   allow_reshare: number;
   hidden: number;
   hidden_reason: string | null;
@@ -103,8 +104,6 @@ export function mapPost(row: PostRow): Post {
     authorId: row.author_id,
     kind: row.kind,
     body: row.body,
-    mediaLabel: row.media_label,
-    mediaTone: row.media_tone,
     frames: framesOf(row),
     allowReshare: row.allow_reshare,
     hidden: row.hidden,
@@ -115,14 +114,17 @@ export function mapPost(row: PostRow): Post {
 }
 
 function framesOf(row: PostRow): Frame[] {
-  if (row.kind === "text") return [];
-  if (row.photos) {
+  if (row.kind === "text" || !row.frames) return [];
+  let value: unknown = row.frames;
+  if (typeof value === "string") {
     try {
-      const parsed = JSON.parse(row.photos) as Frame[];
-      if (Array.isArray(parsed) && parsed.length) return parsed.filter((item) => item && item.label);
+      value = JSON.parse(value);
     } catch {
-      // fall through to the single frame
+      return [];
     }
   }
-  return row.media_label ? [{ label: row.media_label, tone: row.media_tone ?? "#00bf8f,#009e78" }] : [];
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is Frame => Boolean(item) && typeof item.path === "string" && typeof item.mime === "string",
+  );
 }

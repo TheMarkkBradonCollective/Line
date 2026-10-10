@@ -6,14 +6,11 @@ import { useRouter } from "next/navigation";
 import { Check, CircleAlert, Layers, Lock, Search, Send, UserRound, Users, X } from "lucide-react";
 import { shareFromSheetAction, shareSheetAction, type SheetResult } from "@/app/actions";
 import { Avatar, AvatarStack } from "@/components/avatar";
+import { MediaStill } from "@/components/post-media";
 import { cn } from "@/lib/utils";
 
 type Sheet = Awaited<ReturnType<typeof shareSheetAction>>;
 
-function thumbStyle(tone: string | null) {
-  const [a, b] = (tone ?? "#00bf8f,#009e78").split(",").map((part) => part.trim());
-  return { background: `linear-gradient(135deg, ${a}, ${b ?? a})` };
-}
 
 function SkeletonRows() {
   return (
@@ -194,7 +191,13 @@ export function SharePanel({
 
       {data ? (
         <div className="mx-5 mb-3 flex items-center gap-3 rounded-2xl bg-surface-2 p-2.5">
-          <span className="h-12 w-12 shrink-0 rounded-xl" style={thumbStyle(data.post.mediaTone)} aria-hidden />
+          {data.post.cover ? (
+            <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-surface-3" aria-hidden>
+              <MediaStill postId={data.post.id} frame={data.post.cover} alt="" />
+            </span>
+          ) : (
+            <span className="h-12 w-12 shrink-0 rounded-xl bg-gradient-to-br from-brand to-brand-deep" aria-hidden />
+          )}
           <span className="min-w-0">
             <span className="block text-[12px] font-semibold text-ink-3">Made by {data.post.authorName}</span>
             <span className="line-clamp-2 text-[13.5px] font-medium leading-snug">{data.post.body}</span>

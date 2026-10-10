@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
-import { BellOff, CheckCheck, Forward, Play, Repeat2, Send } from "lucide-react";
+import { BellOff, CheckCheck, Forward, MessageCircle, Play, Repeat2, Send } from "lucide-react";
 import { markAllReadAction } from "@/app/actions";
 import { Avatar } from "@/components/avatar";
+import { MediaStill } from "@/components/post-media";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { getDb } from "@/lib/db";
@@ -10,18 +11,16 @@ import { getCurrentUser } from "@/lib/session";
 import { listNotifications } from "@/lib/social";
 import { cn } from "@/lib/utils";
 
-type Item = ReturnType<typeof listNotifications>[number];
+type Item = Awaited<ReturnType<typeof listNotifications>>[number];
 
 const KIND = {
   shared_with_you: { Icon: Send, verb: "sent you", tint: "bg-brand text-brand-on" },
   shared_onward: { Icon: Forward, verb: "passed your post on", tint: "bg-[#7c5cff] text-white" },
   reshared_video: { Icon: Repeat2, verb: "reshared your video", tint: "bg-[#ff7a45] text-white" },
+  commented: { Icon: MessageCircle, verb: "commented on your post", tint: "bg-[#2d88ff] text-white" },
+  replied: { Icon: MessageCircle, verb: "replied to your comment", tint: "bg-[#2d88ff] text-white" },
 } as const;
 
-function thumb(tone: string | null) {
-  const [a, b] = (tone ?? "#00bf8f,#009e78").split(",").map((part) => part.trim());
-  return { background: `linear-gradient(135deg, ${a}, ${b ?? a})` };
-}
 
 function Row({ item }: { item: Item }) {
   const meta = KIND[item.kind as keyof typeof KIND] ?? KIND.shared_with_you;
@@ -44,7 +43,8 @@ function Row({ item }: { item: Item }) {
         <span className="mt-0.5 block text-[12px] text-ink-3">{formatWhen(item.created_at)}</span>
       </span>
       {item.post_id ? (
-        <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl" style={thumb(item.post_tone)} aria-hidden>
+        <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-brand to-brand-deep" aria-hidden>
+          {item.post_frames?.[0] ? <MediaStill postId={item.post_id} frame={item.post_frames[0]} alt="" /> : null}
           {item.post_kind && isVideoKind(item.post_kind) ? (
             <Play className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 fill-white text-white" />
           ) : null}
@@ -67,7 +67,7 @@ function Row({ item }: { item: Item }) {
 export default async function NotificationsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
-  const items = listNotifications(getDb(), user.id);
+  const items = await listNotifications(getDb(), user.id);
   const fresh = items.filter((item) => !item.read);
   const earlier = items.filter((item) => item.read);
 

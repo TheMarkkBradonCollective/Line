@@ -10,8 +10,8 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
   if (!user) redirect("/");
   const { id } = await params;
   const db = getDb();
-  const reel = getReel(db, user.id, Number(id));
+  const reel = await getReel(db, user.id, Number(id));
   if (!reel) notFound();
-  const rest = listReels(db, user.id).filter((item) => item.post.id !== reel.post.id);
+  const rest = (await listReels(db, user.id)).filter((item) => item.post.id !== reel.post.id);
   return <ReelsPlayer reels={[reel, ...rest]} viewerId={user.id} />;
 }

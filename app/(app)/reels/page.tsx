@@ -7,5 +7,5 @@ import { listReels } from "@/lib/social";
 export default async function ReelsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
-  return <ReelsPlayer reels={listReels(getDb(), user.id)} viewerId={user.id} />;
+  return <ReelsPlayer reels={await listReels(getDb(), user.id)} viewerId={user.id} />;
 }
