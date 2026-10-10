@@ -19,10 +19,28 @@ function ReelSlide({ reel, active, viewerId }: { reel: ReelItem; active: boolean
   const mine = summary.mine ? reactionMeta(summary.mine) : null;
   const MineIcon = mine?.Icon ?? ThumbsUp;
   const own = reel.author.id === viewerId;
+  const video = useRef<HTMLVideoElement>(null);
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     if (!active) setPaused(false);
   }, [active]);
+
+  useEffect(() => {
+    const node = video.current;
+    if (!node) return;
+    node.muted = !sound;
+    if (playing) node.play().catch(() => setPaused(true));
+    else node.pause();
+  }, [playing, sound]);
+
+  useEffect(() => {
+    const node = video.current;
+    if (!node) return;
+    const tick = () => setProgress(node.duration ? node.currentTime / node.duration : 0);
+    node.addEventListener("timeupdate", tick);
+    return () => node.removeEventListener("timeupdate", tick);
+  }, []);
 
   function toggleLike() {
     const next = summary.mine ? null : "like";
@@ -49,8 +67,21 @@ function ReelSlide({ reel, active, viewerId }: { reel: ReelItem; active: boolean
       data-testid="reel"
       data-reel-id={reel.post.id}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`/media/${reel.post.id}/0`} alt={reel.post.mediaLabel ?? "Reel"} className={cn("h-full w-full object-cover", playing && "kenburns")} />
+      {reel.post.frames.length ? (
+        <video
+          ref={video}
+          src={`/media/${reel.post.id}/0`}
+          muted
+          loop
+          playsInline
+          preload={active ? "auto" : "metadata"}
+          className="h-full w-full object-cover"
+          aria-label={reel.post.body.slice(0, 120) || "Reel"}
+        />
+      ) : null}
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-1 bg-white/20" aria-hidden>
+        <span className="block h-full bg-white" style={{ width: `${Math.round(progress * 100)}%` }} />
+      </span>
       <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/75" aria-hidden />
       <button
         type="button"
@@ -73,7 +104,7 @@ function ReelSlide({ reel, active, viewerId }: { reel: ReelItem; active: boolean
         className="tap press absolute right-3 top-14 flex items-center justify-center rounded-full"
       >
         <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/35 backdrop-blur-md">
-          {sound && playing ? <Volume2 className="h-5 w-5" aria-hidden /> : <VolumeX className="h-5 w-5" aria-hidden />}
+          {sound ? <Volume2 className="h-5 w-5" aria-hidden /> : <VolumeX className="h-5 w-5" aria-hidden />}
         </span>
       </button>
 
@@ -114,9 +145,6 @@ function ReelSlide({ reel, active, viewerId }: { reel: ReelItem; active: boolean
         {reel.note ? <p className="mt-2 w-fit max-w-full rounded-2xl rounded-tl-md bg-white/20 px-3 py-1.5 text-[13.5px] backdrop-blur-md">{reel.note}</p> : null}
         <p className="mt-2 line-clamp-3 text-[14.5px] leading-snug drop-shadow">{reel.post.body}</p>
       </div>
-      <span className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] bg-white/25" aria-hidden>
-        <span className={cn("block h-full bg-white", playing ? "progress-run" : "w-0")} />
-      </span>
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./db";
 
 /**
  * The one rule: no share, no see.
@@ -16,71 +16,55 @@ export type Access = "author" | "shared" | "staff" | null;
 
 type PostRef = { id: number; authorId: number; hidden: number };
 
-function isModerator(db: Database.Database, userId: number) {
-  const row = db
-    .prepare(
+/** Moderation grant, memoized for the request. */
+function isModerator(db: Db, userId: number) {
+  return db.memo(`moderator:${userId}`, async () => {
+    const row = await db.get(
       "SELECT 1 AS ok FROM permissions WHERE user_id = ? AND permission IN ('view_reported_content', 'moderate_content') LIMIT 1",
-    )
-    .get(userId) as { ok: number } | undefined;
-  return Boolean(row);
+      [userId],
+    );
+    return Boolean(row);
+  });
 }
 
-function blockedEitherWay(db: Database.Database, a: number, b: number) {
-  const row = db
-    .prepare(
-      "SELECT 1 AS ok FROM blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?) LIMIT 1",
-    )
-    .get(a, b, b, a) as { ok: number } | undefined;
-  return Boolean(row);
-}
-
-function sharedTo(db: Database.Database, postId: number, userId: number) {
-  const row = db.prepare("SELECT 1 AS ok FROM shares WHERE post_id = ? AND to_user_id = ? LIMIT 1").get(postId, userId) as
-    | { ok: number }
-    | undefined;
-  return Boolean(row);
-}
-
-function loadPost(db: Database.Database, postId: number): PostRef | null {
-  const row = db.prepare("SELECT id, author_id, hidden FROM posts WHERE id = ?").get(postId) as
-    | { id: number; author_id: number; hidden: number }
-    | undefined;
-  return row ? { id: row.id, authorId: row.author_id, hidden: row.hidden } : null;
-}
-
-export function postAccess(db: Database.Database, viewer: number | { id: number }, post: number | PostRef): Access {
+export async function postAccess(db: Db, viewer: number | { id: number }, post: number | PostRef): Promise<Access> {
   const viewerId = typeof viewer === "number" ? viewer : viewer.id;
-  const ref = typeof post === "number" ? loadPost(db, post) : post;
-  if (!ref) return null;
-  if (ref.authorId === viewerId) return "author";
-  const staff = isModerator(db, viewerId);
-  if (ref.hidden) return staff ? "staff" : null;
-  if (blockedEitherWay(db, viewerId, ref.authorId)) return staff ? "staff" : null;
-  if (sharedTo(db, ref.id, viewerId)) return "shared";
-  return staff ? "staff" : null;
+  const postId = typeof post === "number" ? post : post.id;
+  // One round trip: the post's owner and state, a block either way, and a share addressed to the viewer.
+  const row = (await db.get(
+    `SELECT p.author_id, p.hidden,
+            EXISTS (SELECT 1 FROM blocks b
+                    WHERE (b.blocker_id = ? AND b.blocked_id = p.author_id)
+                       OR (b.blocker_id = p.author_id AND b.blocked_id = ?)) AS blocked,
+            EXISTS (SELECT 1 FROM shares s WHERE s.post_id = p.id AND s.to_user_id = ?) AS shared
+     FROM posts p WHERE p.id = ?`,
+    [viewerId, viewerId, viewerId, postId],
+  )) as { author_id: number; hidden: number; blocked: boolean; shared: boolean } | undefined;
+  if (!row) return null;
+  if (row.author_id === viewerId) return "author";
+  if (!row.hidden && !row.blocked && row.shared) return "shared";
+  return (await isModerator(db, viewerId)) ? "staff" : null;
 }
 
-export function canViewPost(
-  db: Database.Database,
+export async function canViewPost(
+  db: Db,
   viewer: number | { id: number },
   post: number | PostRef,
   options: { allowStaff?: boolean } = {},
 ) {
-  const access = postAccess(db, viewer, post);
+  const access = await postAccess(db, viewer, post);
   if (access === "author" || access === "shared") return true;
   return Boolean(options.allowStaff && access === "staff");
 }
 
 /** Throws the same message whether the post is missing or simply not shared with you. */
-export function requireVisible(db: Database.Database, viewer: number | { id: number }, post: number | PostRef) {
-  if (!canViewPost(db, viewer, post)) throw new Error("That post isn’t available to you.");
+export async function requireVisible(db: Db, viewer: number | { id: number }, post: number | PostRef) {
+  if (!(await canViewPost(db, viewer, post))) throw new Error("That post isn’t available to you.");
 }
 
 /** Profiles are public to signed-in people, except across a block. */
-export function canViewProfile(db: Database.Database, viewerId: number, personId: number) {
+export async function canViewProfile(db: Db, viewerId: number, personId: number) {
   if (viewerId === personId) return true;
-  const row = db.prepare("SELECT 1 AS ok FROM blocks WHERE blocker_id = ? AND blocked_id = ?").get(personId, viewerId) as
-    | { ok: number }
-    | undefined;
+  const row = await db.get("SELECT 1 AS ok FROM blocks WHERE blocker_id = ? AND blocked_id = ?", [personId, viewerId]);
   return !row;
 }

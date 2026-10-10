@@ -45,7 +45,7 @@ export default async function StaffPage({
   if (!user) redirect("/");
   const query = await searchParams;
   const db = getDb();
-  const grants = listPermissions(db, user.id);
+  const grants = await listPermissions(db, user.id);
   const has = (permission: Permission) => grants.includes(permission);
   const queues = queuesForPermissions(grants);
 
@@ -61,14 +61,21 @@ export default async function StaffPage({
     );
   }
 
-  const accounts = has("view_user_account") ? searchAccounts(db, user, query.q || "") : [];
-  const reports = has("review_reports") || queues.length ? listReports(db, user) : [];
-  const resolved = listResolvedReports(db, user);
-  const tickets = has("manage_support_tickets") ? listTickets(db, user) : [];
-  const staff = has("manage_staff") ? listStaff(db, user) : [];
-  const audit = has("access_audit_logs") ? listAudit(db, user) : [];
+  const accounts = has("view_user_account") ? await searchAccounts(db, user, query.q || "") : [];
+  const reports = has("review_reports") || queues.length ? await listReports(db, user) : [];
+  const reportPosts = new Map(
+    await Promise.all(
+      reports
+        .filter((report) => report.targetType === "post" || report.targetType === "video")
+        .map(async (report) => [report.id, await getPost(db, report.targetId)] as const),
+    ),
+  );
+  const resolved = await listResolvedReports(db, user);
+  const tickets = has("manage_support_tickets") ? await listTickets(db, user) : [];
+  const staff = has("manage_staff") ? await listStaff(db, user) : [];
+  const audit = has("access_audit_logs") ? await listAudit(db, user) : [];
   const lookupId = Number(query.post || "");
-  const lookedUp = has("view_reported_content") && lookupId ? getPost(db, lookupId) : null;
+  const lookedUp = has("view_reported_content") && lookupId ? await getPost(db, lookupId) : null;
 
   return (
     <div className="grid gap-8 px-4 pb-6 pt-5 md:px-0 md:pt-6">
@@ -173,7 +180,7 @@ export default async function StaffPage({
           <p className="text-sm text-muted">Cases in queues your grants open. This is not a feed.</p>
           {reports.length === 0 ? <p className="text-sm">Nothing waiting in your queues.</p> : null}
           {reports.map((report) => {
-            const post = report.targetType === "post" || report.targetType === "video" ? getPost(db, report.targetId) : null;
+            const post = reportPosts.get(report.id) ?? null;
             return (
               <article key={report.id} className="rounded-2xl border border-line/70 bg-surface p-3 text-sm">
                 <p className="kicker">Case {report.id} · {report.queue} · {report.category}</p>
@@ -296,8 +303,8 @@ export default async function StaffPage({
           title="Platform"
           note="Tagline and signups. Nothing here delivers a post."
           fields={[
-            ["site_tagline", "Tagline", getSetting(db, "site_tagline")],
-            ["signups_open", "Signups open (1 or 0)", getSetting(db, "signups_open")],
+            ["site_tagline", "Tagline", await getSetting(db, "site_tagline")],
+            ["signups_open", "Signups open (1 or 0)", await getSetting(db, "signups_open")],
           ]}
         />
       ) : null}
@@ -306,9 +313,9 @@ export default async function StaffPage({
         <section className="grid gap-3">
           <h2 className="font-display text-xl font-bold tracking-tight">Security</h2>
           <p className="text-sm text-muted">
-            Password, email, and SMS sign-in are not connected. Demo login stays a person picker. Staff actions always ask for a reason ({getSetting(db, "staff_reason_required") === "1" ? "on" : "off"}).
+            Sign-in is email and password through Supabase Auth. Email confirmation and redirect URLs are set in the Supabase dashboard. Staff actions always ask for a reason ({await getSetting(db, "staff_reason_required") === "1" ? "on" : "off"}).
           </p>
-          <SettingForm settingKey="security_note" label="Security note" value={getSetting(db, "security_note")} />
+          <SettingForm settingKey="security_note" label="Security note" value={await getSetting(db, "security_note")} />
         </section>
       ) : null}
 
@@ -316,20 +323,20 @@ export default async function StaffPage({
         <section className="grid gap-3">
           <h2 className="font-display text-xl font-bold tracking-tight">Financial</h2>
           <p className="border border-rule bg-surface-2 px-3 py-2 text-sm">
-            Payments are not connected. Nothing here charges a card, pays a creator, or opens an invoice. The note is stored so the permission can be tested.
+            LINE has no payments. Nothing here charges a card, pays a creator, or opens an invoice.
           </p>
-          <SettingForm settingKey="billing_note" label="Billing note" value={getSetting(db, "billing_note")} />
+          <SettingForm settingKey="billing_note" label="Billing note" value={await getSetting(db, "billing_note")} />
         </section>
       ) : null}
 
       {has("access_emergency_controls") ? (
         <section className="grid gap-3">
           <h2 className="font-display text-xl font-bold tracking-tight">Emergency</h2>
-          <p className="text-sm">Sharing is {getSetting(db, "sharing_paused") === "1" ? "paused" : "open"}.</p>
+          <p className="text-sm">Sharing is {await getSetting(db, "sharing_paused") === "1" ? "paused" : "open"}.</p>
           <SettingForm
             settingKey="sharing_paused"
             label="Pause sharing (1 pauses, 0 resumes)"
-            value={getSetting(db, "sharing_paused")}
+            value={await getSetting(db, "sharing_paused")}
           />
         </section>
       ) : null}
@@ -340,7 +347,7 @@ export default async function StaffPage({
           <p className="text-sm">
             This panel exists only with the platform ownership grant. Administrator does not have it. Founder is the ownership seat, not a normal staff account.
           </p>
-          <SettingForm settingKey="ownership_note" label="Ownership note" value={getSetting(db, "ownership_note")} />
+          <SettingForm settingKey="ownership_note" label="Ownership note" value={await getSetting(db, "ownership_note")} />
         </section>
       ) : null}
 

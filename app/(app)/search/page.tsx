@@ -17,8 +17,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const query = await searchParams;
   const q = (query.q ?? "").slice(0, 60);
   const db = getDb();
-  const results = q.trim() ? searchPeople(db, user.id, q) : [];
-  const suggestions = q.trim() ? [] : friendSuggestions(db, user.id, 6);
+  const results = q.trim() ? await searchPeople(db, user.id, q) : [];
+  const suggestions = q.trim() ? [] : await friendSuggestions(db, user.id, 6);
   const returnTo = q ? `/search?q=${encodeURIComponent(q)}` : "/search";
 
   const cards = q.trim() ? results : suggestions;

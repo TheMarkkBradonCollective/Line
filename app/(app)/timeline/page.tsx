@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Clapperboard, Image as ImageIcon, Inbox, Plus, Video } from "lucide-react";
+import { Clapperboard, Image as ImageIcon, Inbox, Plus, UserPlus, Video } from "lucide-react";
+import { MediaStill } from "@/components/post-media";
 import { Avatar } from "@/components/avatar";
 import { EmptyState } from "@/components/empty-state";
 import { Notice } from "@/components/notice";
@@ -18,8 +19,8 @@ export default async function HomePage({
   if (!user) redirect("/");
   const query = await searchParams;
   const db = getDb();
-  const items = getHomeFeed(db, user.id);
-  const reels = listReels(db, user.id).slice(0, 8);
+  const items = await getHomeFeed(db, user.id);
+  const reels = (await listReels(db, user.id)).slice(0, 8);
   const firstName = user.displayName.split(" ")[0];
 
   return (
@@ -78,14 +79,13 @@ export default async function HomePage({
           {reels.map((reel) => (
             <li key={reel.post.id} className="shrink-0">
               <Link href={`/reels/${reel.post.id}`} className="relative block h-[176px] w-[104px] overflow-hidden rounded-2xl bg-black">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/media/${reel.post.id}/0`} alt="" className="h-full w-full object-cover" loading="lazy" />
+                {reel.post.frames[0] ? <MediaStill postId={reel.post.id} frame={reel.post.frames[0]} alt="" /> : null}
                 <span className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70" aria-hidden />
                 <span className="absolute left-2 top-2">
                   <Avatar initials={reel.author.initials} color={reel.author.avatarColor} name={reel.author.displayName} size="sm" ring />
                 </span>
                 <span className="absolute inset-x-2 bottom-2 text-[12px] font-semibold leading-tight text-white">
-                  <span className="line-clamp-2">{reel.post.mediaLabel}</span>
+                  <span className="line-clamp-2">{reel.post.body}</span>
                   <span className="mt-0.5 block truncate text-[11px] font-medium text-white/80">
                     {reel.author.id === user.id ? "Yours" : reel.reachedBy ? `From ${reel.reachedBy.displayName.split(" ")[0]}` : reel.author.displayName.split(" ")[0]}
                   </span>
@@ -103,14 +103,19 @@ export default async function HomePage({
         <div className="px-4 md:px-0">
           <EmptyState
             icon={Inbox}
-            title="Quiet for now"
+            title={`Welcome, ${firstName}`}
             action={
-              <Link href="/create" className="press inline-flex h-11 items-center gap-2 rounded-full bg-brand px-5 text-[15px] font-semibold text-brand-on shadow-glow">
-                <Plus className="h-4 w-4" aria-hidden /> Make something
-              </Link>
+              <div className="flex flex-wrap justify-center gap-2.5" data-testid="home-empty-actions">
+                <Link href="/search" className="press inline-flex h-11 items-center gap-2 rounded-full bg-brand px-5 text-[15px] font-semibold text-brand-on shadow-glow">
+                  <UserPlus className="h-4 w-4" aria-hidden /> Find friends
+                </Link>
+                <Link href="/create" className="press inline-flex h-11 items-center gap-2 rounded-full bg-surface-2 px-5 text-[15px] font-semibold text-ink ring-1 ring-line hover:ring-brand">
+                  <Plus className="h-4 w-4" aria-hidden /> Create a post
+                </Link>
+              </div>
             }
           >
-            LINE never fills this page for you. When a friend shares something with you, it shows up here with their name on it.
+            Your feed fills up with what friends share with you, and what you post. Add a few friends, then share something with them.
           </EmptyState>
         </div>
       ) : (

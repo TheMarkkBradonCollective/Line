@@ -10,7 +10,7 @@ import { listPermissions } from "@/lib/social";
 export default async function MenuPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
-  const staff = listPermissions(getDb(), user.id).length > 0;
+  const staff = (await listPermissions(getDb(), user.id)).length > 0;
   const items = [
     { href: "/posts", label: "My posts and who has them", Icon: Layers },
     { href: "/reels", label: "Reels", Icon: Clapperboard },

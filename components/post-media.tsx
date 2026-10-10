@@ -18,10 +18,21 @@ function src(postId: number, index: number) {
   return `/media/${postId}/${index}`;
 }
 
-function Frame({ postId, index, label, className }: { postId: number; index: number; label: string; className?: string }) {
-  // Every frame is fetched through the gated media route. No access, no image.
+type MediaFrame = { mime: string };
+
+function Photo({ postId, index, alt, className }: { postId: number; index: number; alt: string; className?: string }) {
+  // Every file is fetched through the gated media route, which checks access and then redirects
+  // to a short-lived signed URL. No access, no file.
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src(postId, index)} alt={label} loading="lazy" decoding="async" className={cn("h-full w-full object-cover", className)} />;
+  return <img src={src(postId, index)} alt={alt} loading="lazy" decoding="async" className={cn("h-full w-full object-cover", className)} />;
+}
+
+/** A still for grids and tiles. Videos show their first frame. */
+function Still({ postId, frame, alt }: { postId: number; frame: MediaFrame; alt: string }) {
+  if (frame.mime.startsWith("video/")) {
+    return <video src={`${src(postId, 0)}#t=0.1`} muted playsInline preload="metadata" className="h-full w-full object-cover" aria-label={alt} />;
+  }
+  return <Photo postId={postId} index={0} alt={alt} />;
 }
 
 /** Text post as a coloured card, the way short status updates look on a big social app. */
@@ -48,14 +59,16 @@ function TextCard({ postId, body, tile }: { postId: number; body: string; tile: 
   );
 }
 
-function usePlayer(enabled: boolean) {
-  const ref = useRef<HTMLDivElement>(null);
+function useVideo(enabled: boolean, autoplay: boolean) {
+  const box = useRef<HTMLDivElement>(null);
+  const video = useRef<HTMLVideoElement>(null);
   const [inView, setInView] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const [paused, setPaused] = useState(!autoplay);
   const [sound, setSound] = useState(false);
+  const [progress, setProgress] = useState(0);
   useEffect(() => {
     if (!enabled) return;
-    const node = ref.current;
+    const node = box.current;
     if (!node) return;
     const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting && entry.intersectionRatio >= 0.6), {
       threshold: [0, 0.6, 1],
@@ -65,41 +78,37 @@ function usePlayer(enabled: boolean) {
   }, [enabled]);
   const playing = enabled && inView && !paused;
   useEffect(() => {
-    if (!playing || !sound) return;
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const gain = ctx.createGain();
-    gain.gain.value = 0.03;
-    const tone = ctx.createOscillator();
-    tone.type = "sine";
-    tone.frequency.value = 220;
-    tone.connect(gain);
-    gain.connect(ctx.destination);
-    tone.start();
-    return () => {
-      tone.stop();
-      ctx.close().catch(() => undefined);
-    };
+    const node = video.current;
+    if (!node) return;
+    node.muted = !sound;
+    if (playing) node.play().catch(() => setPaused(true));
+    else node.pause();
   }, [playing, sound]);
-  return { ref, playing, paused, setPaused, sound, setSound };
+  useEffect(() => {
+    const node = video.current;
+    if (!node) return;
+    const tick = () => setProgress(node.duration ? node.currentTime / node.duration : 0);
+    node.addEventListener("timeupdate", tick);
+    return () => node.removeEventListener("timeupdate", tick);
+  }, []);
+  return { box, video, playing, paused, setPaused, sound, setSound, progress };
 }
 
 function PlayerChrome({
   playing,
-  paused,
   onToggle,
   sound,
   onSound,
   kindLabel,
+  progress,
   big = true,
 }: {
   playing: boolean;
-  paused: boolean;
   onToggle: () => void;
   sound: boolean;
   onSound: () => void;
   kindLabel: string;
+  progress: number;
   big?: boolean;
 }) {
   return (
@@ -121,19 +130,8 @@ function PlayerChrome({
         ) : null}
       </button>
       <span className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-black/40 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
-        {playing ? (
-          <span className="flex h-3 items-end gap-[2px]" aria-hidden>
-            <span className="eq-bar h-3 w-[2px] rounded bg-white" />
-            <span className="eq-bar h-3 w-[2px] rounded bg-white [animation-delay:150ms]" />
-            <span className="eq-bar h-3 w-[2px] rounded bg-white [animation-delay:300ms]" />
-          </span>
-        ) : kindLabel === "Reel" ? (
-          <Clapperboard className="h-3 w-3" aria-hidden />
-        ) : (
-          <Play className="h-3 w-3 fill-white" aria-hidden />
-        )}
+        {kindLabel === "Reel" ? <Clapperboard className="h-3 w-3" aria-hidden /> : <Play className="h-3 w-3 fill-white" aria-hidden />}
         {kindLabel}
-        {paused ? <span className="sr-only">, paused</span> : null}
       </span>
       <button
         type="button"
@@ -147,11 +145,11 @@ function PlayerChrome({
         aria-label={sound ? "Mute" : "Turn sound on"}
       >
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/40 backdrop-blur-md">
-          {sound && playing ? <Volume2 className="h-4 w-4" aria-hidden /> : <VolumeX className="h-4 w-4" aria-hidden />}
+          {sound ? <Volume2 className="h-4 w-4" aria-hidden /> : <VolumeX className="h-4 w-4" aria-hidden />}
         </span>
       </button>
       <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-white/25" aria-hidden>
-        <span className={cn("block h-full bg-white", playing ? "progress-run" : "w-0")} />
+        <span className="block h-full bg-white transition-[width] duration-200" style={{ width: `${Math.round(progress * 100)}%` }} />
       </span>
     </>
   );
@@ -167,13 +165,14 @@ export function PostMedia({
   postId: number;
   kind: string;
   body: string;
-  frames: { label: string }[];
+  frames: MediaFrame[];
   variant?: Variant;
 }) {
-  const video = kind === "video" || kind === "long_video" || kind === "reel" || kind === "short";
+  const isVideo = kind === "video" || kind === "long_video" || kind === "reel" || kind === "short";
   const reel = kind === "reel" || kind === "short";
-  const player = usePlayer(video && variant !== "tile");
   const tile = variant === "tile";
+  const player = useVideo(isVideo && !tile && frames.length > 0, variant === "reel" || reel);
+  const alt = body.slice(0, 120) || (reel ? "Reel" : isVideo ? "Video" : "Photo");
 
   if (kind === "text") {
     if (!tile && body.length > 160) return null;
@@ -184,28 +183,37 @@ export function PostMedia({
   if (tile) {
     return (
       <div className="relative aspect-square overflow-hidden bg-surface-3">
-        <Frame postId={postId} index={0} label={frames[0].label} />
+        <Still postId={postId} frame={frames[0]} alt={alt} />
         <span className="pointer-events-none absolute right-1.5 top-1.5 rounded-full bg-black/45 p-1 text-white backdrop-blur-md">
-          {reel ? <Clapperboard className="h-3 w-3" aria-hidden /> : video ? <Play className="h-3 w-3 fill-white" aria-hidden /> : frames.length > 1 ? <Images className="h-3 w-3" aria-hidden /> : null}
-          <span className="sr-only">{reel ? "Reel" : video ? "Video" : "Photo"}</span>
+          {reel ? <Clapperboard className="h-3 w-3" aria-hidden /> : isVideo ? <Play className="h-3 w-3 fill-white" aria-hidden /> : frames.length > 1 ? <Images className="h-3 w-3" aria-hidden /> : null}
+          <span className="sr-only">{reel ? "Reel" : isVideo ? "Video" : "Photo"}</span>
         </span>
       </div>
     );
   }
 
-  if (video) {
+  if (isVideo) {
     const aspect = variant === "reel" ? "h-full" : reel ? "aspect-[4/5]" : "aspect-video";
     return (
-      <div ref={player.ref} className={cn("relative w-full overflow-hidden bg-black", aspect)}>
-        <Frame postId={postId} index={0} label={frames[0].label} className={cn(player.playing && "kenburns")} />
+      <div ref={player.box} className={cn("relative w-full overflow-hidden bg-black", aspect)}>
+        <video
+          ref={player.video}
+          src={src(postId, 0)}
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          className={cn("h-full w-full", variant === "reel" || reel ? "object-cover" : "object-contain")}
+          aria-label={alt}
+        />
         <span className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" aria-hidden />
         <PlayerChrome
           playing={player.playing}
-          paused={player.paused}
           onToggle={() => player.setPaused((value) => !value)}
           sound={player.sound}
           onSound={() => player.setSound((value) => !value)}
           kindLabel={reel ? "Reel" : "Video"}
+          progress={player.progress}
           big={variant !== "reel"}
         />
       </div>
@@ -217,16 +225,16 @@ export function PostMedia({
   if (count === 1) {
     return (
       <div className="relative aspect-square w-full overflow-hidden bg-surface-3">
-        <Frame postId={postId} index={0} label={frames[0].label} />
+        <Photo postId={postId} index={0} alt={alt} />
       </div>
     );
   }
   if (count === 2) {
     return (
       <div className="grid aspect-[2/1.15] grid-cols-2 gap-0.5 bg-surface">
-        {frames.map((frame, index) => (
+        {frames.map((_, index) => (
           <div key={index} className="relative overflow-hidden bg-surface-3">
-            <Frame postId={postId} index={index} label={frame.label} />
+            <Photo postId={postId} index={index} alt={`${alt} (${index + 1} of ${count})`} />
           </div>
         ))}
       </div>
@@ -236,11 +244,11 @@ export function PostMedia({
     return (
       <div className="grid aspect-square grid-cols-2 grid-rows-2 gap-0.5 bg-surface">
         <div className="relative row-span-2 overflow-hidden bg-surface-3">
-          <Frame postId={postId} index={0} label={frames[0].label} />
+          <Photo postId={postId} index={0} alt={`${alt} (1 of 3)`} />
         </div>
-        {frames.slice(1).map((frame, index) => (
+        {frames.slice(1).map((_, index) => (
           <div key={index} className="relative overflow-hidden bg-surface-3">
-            <Frame postId={postId} index={index + 1} label={frame.label} />
+            <Photo postId={postId} index={index + 1} alt={`${alt} (${index + 2} of 3)`} />
           </div>
         ))}
       </div>
@@ -248,9 +256,9 @@ export function PostMedia({
   }
   return (
     <div className="grid aspect-square grid-cols-2 grid-rows-2 gap-0.5 bg-surface">
-      {frames.slice(0, 4).map((frame, index) => (
+      {frames.slice(0, 4).map((_, index) => (
         <div key={index} className="relative overflow-hidden bg-surface-3">
-          <Frame postId={postId} index={index} label={frame.label} />
+          <Photo postId={postId} index={index} alt={`${alt} (${index + 1} of ${count})`} />
           {index === 3 && count > 4 ? (
             <span className="absolute inset-0 flex items-center justify-center bg-black/45 font-display text-3xl font-bold text-white">+{count - 4}</span>
           ) : null}
@@ -259,3 +267,5 @@ export function PostMedia({
     </div>
   );
 }
+
+export { Still as MediaStill };

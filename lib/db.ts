@@ -1,280 +1,184 @@
-import fs from "fs";
-import path from "path";
-import Database from "better-sqlite3";
-import { seed } from "./seed";
+import "server-only";
+import { cache } from "react";
+import postgres from "postgres";
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY,
-  username TEXT NOT NULL UNIQUE,
-  display_name TEXT NOT NULL,
-  bio TEXT NOT NULL DEFAULT '',
-  avatar_color TEXT NOT NULL,
-  initials TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'user',
-  who_can_share TEXT NOT NULL DEFAULT 'friends',
-  who_can_add TEXT NOT NULL DEFAULT 'everyone',
-  who_can_reshare TEXT NOT NULL DEFAULT 'recipients',
-  restricted INTEGER NOT NULL DEFAULT 0,
-  suspended INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL
-);
+/**
+ * Postgres access for LINE. Server only.
+ *
+ * One small connection pool per server instance (one per Vercel function instance),
+ * pointed at the Supabase pooler. Queries are written with `?` placeholders and run
+ * through Db, which also memoizes a few lookups for the length of one request.
+ * Nothing here is ever imported by a client component.
+ */
 
-CREATE TABLE IF NOT EXISTS permissions (
-  user_id INTEGER NOT NULL,
-  permission TEXT NOT NULL,
-  PRIMARY KEY (user_id, permission),
-  FOREIGN KEY (user_id) REFERENCES users(id)
-);
+export type Sql = postgres.Sql<Record<string, unknown>>;
+type Param = string | number | boolean | null | undefined | Date | object;
 
-CREATE TABLE IF NOT EXISTS friendships (
-  id INTEGER PRIMARY KEY,
-  requester_id INTEGER NOT NULL,
-  addressee_id INTEGER NOT NULL,
-  status TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  UNIQUE (requester_id, addressee_id),
-  FOREIGN KEY (requester_id) REFERENCES users(id),
-  FOREIGN KEY (addressee_id) REFERENCES users(id)
-);
+export type SqlOptions = {
+  url?: string;
+  /** Run against a schema other than public. The core-rule test uses a throwaway schema. */
+  schema?: string;
+  max?: number;
+};
 
-CREATE TABLE IF NOT EXISTS blocks (
-  blocker_id INTEGER NOT NULL,
-  blocked_id INTEGER NOT NULL,
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (blocker_id, blocked_id),
-  FOREIGN KEY (blocker_id) REFERENCES users(id),
-  FOREIGN KEY (blocked_id) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS friend_groups (
-  id INTEGER PRIMARY KEY,
-  owner_id INTEGER NOT NULL,
-  name TEXT NOT NULL,
-  allows_inbound_share INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (owner_id) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS friend_group_members (
-  group_id INTEGER NOT NULL,
-  user_id INTEGER NOT NULL,
-  PRIMARY KEY (group_id, user_id),
-  FOREIGN KEY (group_id) REFERENCES friend_groups(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS friend_lists (
-  id INTEGER PRIMARY KEY,
-  owner_id INTEGER NOT NULL,
-  name TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (owner_id) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS friend_list_members (
-  list_id INTEGER NOT NULL,
-  user_id INTEGER NOT NULL,
-  PRIMARY KEY (list_id, user_id),
-  FOREIGN KEY (list_id) REFERENCES friend_lists(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS share_allow (
-  user_id INTEGER NOT NULL,
-  allowed_id INTEGER NOT NULL,
-  PRIMARY KEY (user_id, allowed_id),
-  FOREIGN KEY (user_id) REFERENCES users(id),
-  FOREIGN KEY (allowed_id) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS posts (
-  id INTEGER PRIMARY KEY,
-  author_id INTEGER NOT NULL,
-  kind TEXT NOT NULL,
-  body TEXT NOT NULL,
-  media_label TEXT,
-  media_tone TEXT,
-  allow_reshare INTEGER NOT NULL DEFAULT 1,
-  hidden INTEGER NOT NULL DEFAULT 0,
-  hidden_reason TEXT,
-  seed_key TEXT UNIQUE,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (author_id) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS shares (
-  id INTEGER PRIMARY KEY,
-  post_id INTEGER NOT NULL,
-  from_user_id INTEGER NOT NULL,
-  to_user_id INTEGER NOT NULL,
-  share_kind TEXT NOT NULL,
-  group_id INTEGER,
-  list_id INTEGER,
-  parent_share_id INTEGER,
-  note TEXT,
-  created_at TEXT NOT NULL,
-  UNIQUE (post_id, from_user_id, to_user_id),
-  FOREIGN KEY (post_id) REFERENCES posts(id),
-  FOREIGN KEY (from_user_id) REFERENCES users(id),
-  FOREIGN KEY (to_user_id) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS notifications (
-  id INTEGER PRIMARY KEY,
-  user_id INTEGER NOT NULL,
-  kind TEXT NOT NULL,
-  actor_id INTEGER NOT NULL,
-  post_id INTEGER,
-  share_id INTEGER,
-  read INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id),
-  FOREIGN KEY (actor_id) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS reports (
-  id INTEGER PRIMARY KEY,
-  reporter_id INTEGER NOT NULL,
-  target_type TEXT NOT NULL,
-  target_id INTEGER NOT NULL,
-  category TEXT NOT NULL,
-  details TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'open',
-  queue TEXT NOT NULL DEFAULT 'moderator',
-  resolution TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  FOREIGN KEY (reporter_id) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS tickets (
-  id INTEGER PRIMARY KEY,
-  user_id INTEGER NOT NULL,
-  subject TEXT NOT NULL,
-  body TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open',
-  assignee_id INTEGER,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS audit_log (
-  id INTEGER PRIMARY KEY,
-  staff_id INTEGER NOT NULL,
-  staff_role TEXT NOT NULL,
-  action TEXT NOT NULL,
-  target_type TEXT,
-  target_id INTEGER,
-  reason TEXT NOT NULL,
-  previous_state TEXT,
-  new_state TEXT,
-  case_id INTEGER,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (staff_id) REFERENCES users(id)
-);
-
-CREATE TABLE IF NOT EXISTS settings (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS reactions (
-  user_id INTEGER NOT NULL,
-  post_id INTEGER NOT NULL,
-  kind TEXT NOT NULL DEFAULT 'like',
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (user_id, post_id, kind),
-  FOREIGN KEY (user_id) REFERENCES users(id),
-  FOREIGN KEY (post_id) REFERENCES posts(id)
-);
-
-CREATE TABLE IF NOT EXISTS comments (
-  id INTEGER PRIMARY KEY,
-  post_id INTEGER NOT NULL,
-  author_id INTEGER NOT NULL,
-  parent_id INTEGER,
-  body TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (post_id) REFERENCES posts(id),
-  FOREIGN KEY (author_id) REFERENCES users(id),
-  FOREIGN KEY (parent_id) REFERENCES comments(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_shares_to ON shares(to_user_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_shares_post ON shares(post_id);
-CREATE INDEX IF NOT EXISTS idx_reactions_post ON reactions(post_id, kind);
-CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read, created_at);
-CREATE INDEX IF NOT EXISTS idx_reports_queue ON reports(queue, status);
-
-CREATE TRIGGER IF NOT EXISTS audit_log_no_delete
-BEFORE DELETE ON audit_log
-BEGIN
-  SELECT RAISE(ABORT, 'audit history cannot be erased');
-END;
-
-CREATE TRIGGER IF NOT EXISTS audit_log_no_update
-BEFORE UPDATE ON audit_log
-BEGIN
-  SELECT RAISE(ABORT, 'audit history cannot be altered');
-END;
-`;
-
-export function defaultDbPath() {
-  return process.env.LINE_DB_PATH || path.join(process.cwd(), "data", "line.sqlite");
+export function databaseUrl() {
+  const url = process.env.DATABASE_URL || "";
+  if (!/^postgres(ql)?:\/\//.test(url)) {
+    throw new Error(
+      "DATABASE_URL is not set to a Postgres connection string. Use the Supabase transaction pooler URI (Connect → Transaction pooler).",
+    );
+  }
+  return url;
 }
 
-export function openDatabase(filePath: string) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const db = new Database(filePath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  return db;
+const isPostgresUrl = (value: string | undefined): value is string => Boolean(value && /^postgres(ql)?:\/\//.test(value));
+
+/** Scripts (migrations, make-founder, reset) prefer the session pooler URI in SUPABASE_DB_URL. */
+export function scriptDatabaseUrl() {
+  if (isPostgresUrl(process.env.SUPABASE_DB_URL)) return process.env.SUPABASE_DB_URL;
+  if (isPostgresUrl(process.env.DATABASE_URL)) return process.env.DATABASE_URL;
+  throw new Error("Set SUPABASE_DB_URL (session pooler URI) or DATABASE_URL to a postgres:// connection string.");
 }
 
-/** Columns added after the first release. Older databases get them on open. */
-const ADDED_COLUMNS: [table: string, column: string, definition: string][] = [
-  ["users", "location", "TEXT NOT NULL DEFAULT ''"],
-  ["users", "work", "TEXT NOT NULL DEFAULT ''"],
-  ["users", "education", "TEXT NOT NULL DEFAULT ''"],
-  ["posts", "photos", "TEXT"],
-];
+function isLocal(url: string) {
+  try {
+    const host = new URL(url).hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return false;
+  }
+}
 
-export function migrate(db: Database.Database) {
-  db.exec(SCHEMA);
-  for (const [table, column, definition] of ADDED_COLUMNS) {
-    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-    if (!columns.some((item) => item.name === column)) {
-      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+const INT8 = 20;
+const TIMESTAMP = 1114;
+const TIMESTAMPTZ = 1184;
+
+export function createSql(options: SqlOptions = {}): Sql {
+  const url = options.url ?? databaseUrl();
+  const schema = options.schema ?? process.env.DATABASE_SCHEMA;
+  return postgres(url, {
+    // Serverless: few connections per instance, closed quickly when idle.
+    max: options.max ?? Number(process.env.DATABASE_POOL_MAX || 3),
+    idle_timeout: 15,
+    max_lifetime: 60 * 10,
+    connect_timeout: 15,
+    // The Supabase transaction pooler (port 6543) does not keep prepared statements.
+    prepare: false,
+    ssl: isLocal(url) ? false : "require",
+    onnotice: () => {},
+    connection: {
+      TimeZone: "UTC",
+      application_name: "line",
+      ...(schema ? { search_path: schema } : {}),
+    },
+    types: {
+      // COUNT(*) and friends come back as int8. Every LINE count fits in a JS number.
+      count: { to: INT8, from: [INT8], serialize: (value: number) => String(value), parse: (value: string) => Number(value) },
+      // Timestamps travel as ISO strings, the same shape the app always used.
+      time: {
+        to: TIMESTAMPTZ,
+        from: [TIMESTAMPTZ, TIMESTAMP],
+        serialize: (value: string | Date) => (value instanceof Date ? value.toISOString() : value),
+        parse: (value: string) => new Date(value.includes("T") || /[+-]\d\d(:?\d\d)?$/.test(value) ? value : `${value}Z`).toISOString(),
+      },
+    },
+  }) as unknown as Sql;
+}
+
+/** `?` placeholders become `$1, $2…`. Quoted text is left alone. */
+const converted = new Map<string, string>();
+export function toPg(query: string) {
+  const hit = converted.get(query);
+  if (hit) return hit;
+  let out = "";
+  let n = 0;
+  let quote: string | null = null;
+  for (const ch of query) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      out += ch;
+    } else if (ch === "'" || ch === '"') {
+      quote = ch;
+      out += ch;
+    } else if (ch === "?") {
+      out += `$${++n}`;
+    } else {
+      out += ch;
     }
   }
+  converted.set(query, out);
+  return out;
 }
 
-export function createDatabase(filePath: string) {
-  const db = openDatabase(filePath);
-  migrate(db);
-  return db;
+function clean(params: Param[]) {
+  return params.map((value) => (value === undefined ? null : value)) as postgres.ParameterOrJSON<never>[];
 }
 
-const globalForDb = globalThis as unknown as { lineDb?: Database.Database; lineDbPath?: string };
+export class Db {
+  /** Per-request memo for read lookups. Any write clears it. */
+  readonly memoized = new Map<string, Promise<unknown>>();
 
-export function getDb() {
-  const filePath = defaultDbPath();
-  if (!globalForDb.lineDb || globalForDb.lineDbPath !== filePath) {
-    const db = createDatabase(filePath);
-    seedIfEmpty(db);
-    globalForDb.lineDb = db;
-    globalForDb.lineDbPath = filePath;
+  constructor(
+    private readonly sql: Sql,
+    private readonly inTransaction = false,
+  ) {}
+
+  async all(query: string, params: Param[] = []): Promise<any[]> {
+    return (await this.sql.unsafe(toPg(query), clean(params))) as unknown as unknown[];
   }
-  return globalForDb.lineDb;
+
+  async get(query: string, params: Param[] = []): Promise<any> {
+    const rows = await this.all(query, params);
+    return rows[0];
+  }
+
+  async run(query: string, params: Param[] = []) {
+    this.memoized.clear();
+    const result = await this.sql.unsafe(toPg(query), clean(params));
+    return { count: result.count };
+  }
+
+  /** INSERT … RETURNING id. */
+  async insert(query: string, params: Param[] = []): Promise<number> {
+    this.memoized.clear();
+    const rows = (await this.sql.unsafe(`${toPg(query)} RETURNING id`, clean(params))) as unknown as { id: number }[];
+    return rows[0].id;
+  }
+
+  /** Raw multi-statement SQL, no parameters. Used by migrations. */
+  async exec(text: string) {
+    this.memoized.clear();
+    await this.sql.unsafe(text);
+  }
+
+  async tx<T>(work: (db: Db) => Promise<T>): Promise<T> {
+    if (this.inTransaction) return work(this);
+    this.memoized.clear();
+    try {
+      return (await this.sql.begin((inner) => work(new Db(inner as unknown as Sql, true)))) as T;
+    } finally {
+      this.memoized.clear();
+    }
+  }
+
+  memo<T>(key: string, load: () => Promise<T>): Promise<T> {
+    const hit = this.memoized.get(key);
+    if (hit) return hit as Promise<T>;
+    const pending = load().catch((error) => {
+      this.memoized.delete(key);
+      throw error;
+    });
+    this.memoized.set(key, pending);
+    return pending;
+  }
 }
 
-export function seedIfEmpty(db: Database.Database) {
-  const run = db.transaction(() => {
-    const row = db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number };
-    if (row.c > 0) return;
-    seed(db);
-  });
-  run();
+const globalForDb = globalThis as unknown as { lineSql?: Sql };
+
+function sharedSql() {
+  if (!globalForDb.lineSql) globalForDb.lineSql = createSql();
+  return globalForDb.lineSql;
 }
+
+/** The request's Db. React's cache() gives each server request its own memo. */
+export const getDb = cache(() => new Db(sharedSql()));

@@ -27,17 +27,17 @@ export default async function PostPage({
   const { id } = await params;
   const query = await searchParams;
   const db = getDb();
-  const post = getPost(db, Number(id));
+  const post = await getPost(db, Number(id));
   // One gate. Staff may open a post as a case file; nobody else gets past without a share.
-  const access = post ? postAccess(db, user, post) : null;
+  const access = post ? await postAccess(db, user, post) : null;
   if (!post || !access) notFound();
-  const author = mustUser(db, post.authorId);
+  const author = await mustUser(db, post.authorId);
   const mine = access === "author";
   const staffView = access === "staff";
-  const counts = postEngagement(db, user.id, post.id);
-  const comments = listComments(db, user.id, post.id, { allowStaff: true }) ?? [];
-  const reached = !mine && !staffView ? getTimeline(db, user.id).find((item) => item.postId === post.id) : undefined;
-  const history = mine ? shareHistory(db, post.id) : [];
+  const counts = await postEngagement(db, user.id, post.id);
+  const comments = await listComments(db, user.id, post.id, { allowStaff: true }) ?? [];
+  const reached = !mine && !staffView ? (await getTimeline(db, user.id)).find((item) => item.postId === post.id) : undefined;
+  const history = mine ? await shareHistory(db, post.id) : [];
   const replyingTo = Number(query.reply) || null;
   const text = post.kind === "text" && post.body.length <= 160;
 

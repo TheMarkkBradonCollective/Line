@@ -1,33 +1,29 @@
 import Link from "next/link";
-import { ArrowRight, ShieldCheck } from "lucide-react";
-import { loginAction } from "@/app/actions";
+import { ArrowRight } from "lucide-react";
+import { signInAction, signUpAction } from "@/app/actions";
 import { Avatar } from "@/components/avatar";
 import { Notice } from "@/components/notice";
 import { getDb } from "@/lib/db";
-import { ROLE_LABELS, type Role } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
-import { getSetting, listUsers } from "@/lib/social";
-import { roleRank } from "@/lib/staff";
+import { getSetting } from "@/lib/social";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 const STEPS = ["Create", "Share", "Receive", "Reshare", "Continue"];
 
-type Person = { username: string; displayName: string; role: string; avatarColor: string; initials: string; bio: string };
-
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ notice?: string; error?: string }>;
+  searchParams: Promise<{ notice?: string; error?: string; mode?: string }>;
 }) {
   const query = await searchParams;
   const db = getDb();
   const current = await getCurrentUser();
-  const tagline = getSetting(db, "site_tagline") || "Sent, not served.";
-  const signups = getSetting(db, "signups_open") === "1";
-  const users = listUsers(db);
-  const people = users.filter((user) => user.role === "user");
-  const staff = users.filter((user) => user.role !== "user").sort((a, b) => roleRank(a.role) - roleRank(b.role));
+  const tagline = await getSetting(db, "site_tagline") || "Sent, not served.";
+  // Open unless a staff member closes sign-ups from the console.
+  const signupsOpen = (await getSetting(db, "signups_open")) !== "0";
+  const signup = query.mode === "signup";
 
   return (
     <main className="min-h-dvh lg:grid lg:grid-cols-[1.1fr_1fr]">
@@ -65,67 +61,84 @@ export default async function HomePage({
         </div>
       </section>
 
-      {/* Sign in */}
-      <section className="mx-auto w-full max-w-xl px-5 py-8 lg:px-10 lg:py-14">
+      {/* Sign in / sign up */}
+      <section className="mx-auto w-full max-w-md px-5 py-8 lg:px-10 lg:py-14">
         <Notice notice={query.notice} error={query.error} />
-        <h2 className="page-title">Sign in</h2>
-        <p className="mt-1.5 text-sm text-ink-2">
-          Pick a person to try the demo. {signups ? "New accounts are open." : "There’s no password."}
-        </p>
-        <h3 className="mt-6 text-[12px] font-semibold uppercase tracking-wider text-ink-3">People</h3>
-        <ul className="mt-2.5 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          {people.map((user, index) => (
-            <li key={user.username} className="animate-rise" style={{ ["--i" as string]: Math.min(index, 8) }}>
-              <PersonCard user={user} />
-            </li>
-          ))}
-        </ul>
-        <h3 className="mt-8 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wider text-ink-3">
-          <ShieldCheck className="h-3.5 w-3.5" aria-hidden /> Staff
-        </h3>
-        <p className="mt-1 text-[13px] text-ink-3">Desks open from permission grants, not the title.</p>
-        <ul className="surface-card mt-2.5 divide-y divide-line/70 overflow-hidden">
-          {staff.map((user) => (
-            <li key={user.username}>
-              <form action={loginAction}>
-                <input type="hidden" name="username" value={user.username} />
-                <button type="submit" className="flex min-h-[60px] w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-surface-2">
-                  <Avatar initials={user.initials} color={user.avatarColor} name={user.displayName} size="sm" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14.5px] font-semibold">{user.displayName}</span>
-                    <span className="block truncate text-[12.5px] text-ink-3">@{user.username}</span>
-                  </span>
-                  <span className="shrink-0 rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand-strong">
-                    {ROLE_LABELS[user.role as Role] ?? user.role}
-                  </span>
-                </button>
-              </form>
-            </li>
-          ))}
-        </ul>
+        <div className="mb-6 grid grid-cols-2 rounded-full bg-surface-2 p-1 text-[14px] font-semibold" role="tablist" aria-label="Account">
+          <Link
+            href="/"
+            role="tab"
+            aria-selected={!signup}
+            className={cn("rounded-full py-2.5 text-center", !signup ? "bg-surface text-ink shadow-e1" : "text-ink-3 hover:text-ink")}
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/?mode=signup"
+            role="tab"
+            aria-selected={signup}
+            className={cn("rounded-full py-2.5 text-center", signup ? "bg-surface text-ink shadow-e1" : "text-ink-3 hover:text-ink")}
+          >
+            Create account
+          </Link>
+        </div>
+
+        {signup ? (
+          signupsOpen ? (
+            <form action={signUpAction} className="grid gap-3" data-testid="signup-form">
+              <h2 className="page-title">Join LINE</h2>
+              <p className="-mt-1 text-sm text-ink-2">Your profile is open to people on LINE. Your posts only reach the people you share them with.</p>
+              <Field label="Your name" name="displayName" autoComplete="name" placeholder="Alex Rivera" required minLength={2} />
+              <Field label="Username" name="username" autoComplete="username" placeholder="alex" required minLength={3} pattern="[A-Za-z0-9_.@]{3,24}" hint="Letters, numbers, dots and underscores." />
+              <Field label="Email" name="email" type="email" autoComplete="email" placeholder="you@example.com" required />
+              <Field label="Password" name="password" type="password" autoComplete="new-password" required minLength={8} hint="At least 8 characters." />
+              <SubmitButton>Create account</SubmitButton>
+              <p className="text-[12.5px] text-ink-3">We’ll email you a link to confirm your address.</p>
+            </form>
+          ) : (
+            <p className="surface-card p-4 text-sm text-ink-2">Sign-ups are closed right now. Check back soon.</p>
+          )
+        ) : (
+          <form action={signInAction} className="grid gap-3" data-testid="signin-form">
+            <h2 className="page-title">Welcome back</h2>
+            <Field label="Email" name="email" type="email" autoComplete="email" placeholder="you@example.com" required />
+            <Field label="Password" name="password" type="password" autoComplete="current-password" required />
+            <SubmitButton>Sign in</SubmitButton>
+            <p className="text-[13px] text-ink-3">
+              New here?{" "}
+              <Link href="/?mode=signup" className="font-semibold text-brand-strong hover:underline">
+                Create an account
+              </Link>
+            </p>
+          </form>
+        )}
       </section>
     </main>
   );
 }
 
-function PersonCard({ user }: { user: Person }) {
+function Field({
+  label,
+  hint,
+  ...props
+}: React.InputHTMLAttributes<HTMLInputElement> & { label: string; name: string; hint?: string }) {
   return (
-    <form action={loginAction}>
-      <input type="hidden" name="username" value={user.username} />
-      <button
-        type="submit"
-        className="press group flex w-full flex-col items-center gap-2 rounded-3xl bg-surface px-3 pb-3.5 pt-4 text-center shadow-e1 ring-1 ring-line/60 hover:shadow-e2 hover:ring-brand/50"
-      >
-        <span className="rounded-full p-[2px] transition group-hover:bg-gradient-to-br group-hover:from-brand group-hover:to-brand-deep">
-          <span className="block rounded-full bg-surface p-[2px]">
-            <Avatar initials={user.initials} color={user.avatarColor} name={user.displayName} size="lg" />
-          </span>
-        </span>
-        <span className="min-w-0 max-w-full">
-          <span className="block truncate text-[14.5px] font-semibold text-ink">{user.displayName}</span>
-          <span className="block truncate text-[12.5px] text-ink-3">@{user.username}</span>
-        </span>
-      </button>
-    </form>
+    <label className="block">
+      <span className="mb-1.5 block text-[13px] font-semibold text-ink-2">{label}</span>
+      <input className="field" {...props} />
+      {hint ? <span className="mt-1 block text-[12px] text-ink-3">{hint}</span> : null}
+    </label>
+  );
+}
+
+function SubmitButton({ children }: { children: React.ReactNode }) {
+  return (
+    <button
+      type="submit"
+      className="press mt-1 flex h-12 items-center justify-center gap-2 rounded-full bg-brand text-[15px] font-semibold text-brand-on shadow-glow hover:bg-brand-deep hover:text-white"
+    >
+      {children}
+      <ArrowRight className="h-4 w-4" aria-hidden />
+    </button>
   );
 }

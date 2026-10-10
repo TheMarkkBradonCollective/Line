@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowRight, Camera, Layers, Repeat2, Send } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
-import { LoopMedia } from "@/components/loop-media";
+import { PostMedia } from "@/components/post-media";
 import { Notice } from "@/components/notice";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,7 @@ export default async function MyPostsPage({
   const user = await getCurrentUser();
   if (!user) redirect("/");
   const query = await searchParams;
-  const posts = getMyPosts(getDb(), user.id);
+  const posts = await getMyPosts(getDb(), user.id);
 
   return (
     <div>
@@ -45,7 +45,7 @@ export default async function MyPostsPage({
             <article key={post.id} className="surface-card overflow-hidden">
               <div className="flex gap-3.5 p-3.5">
                 <Link href={`/post/${post.id}`} className="relative block h-20 w-20 shrink-0 overflow-hidden rounded-2xl">
-                  <LoopMedia kind={post.kind} label={post.mediaLabel} tone={post.mediaTone} body={post.body} interactive={false} tile />
+                  <PostMedia postId={post.id} kind={post.kind} body={post.body} frames={post.frames} variant="tile" />
                 </Link>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">

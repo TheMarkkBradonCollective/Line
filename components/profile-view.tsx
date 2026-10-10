@@ -28,7 +28,7 @@ import { Avatar, AvatarStack } from "@/components/avatar";
 import { EmptyState } from "@/components/empty-state";
 import { Notice } from "@/components/notice";
 import { PostCard } from "@/components/post-card";
-import { PostMedia } from "@/components/post-media";
+import { MediaStill, PostMedia } from "@/components/post-media";
 import { ReportForm } from "@/components/report-form";
 import { Button } from "@/components/ui/button";
 import { canViewProfile } from "@/lib/access";
@@ -96,13 +96,13 @@ export async function ProfileView({
   const viewer = await getCurrentUser();
   if (!viewer) redirect("/");
   const db = getDb();
-  const person = getUserByUsername(db, username);
+  const person = await getUserByUsername(db, username);
   if (!person) notFound();
-  const rel = relationship(db, viewer.id, person.id);
+  const rel = await relationship(db, viewer.id, person.id);
   const self = rel === "self";
 
   // Profiles are public to signed-in people. A block from them closes it.
-  if (!canViewProfile(db, viewer.id, person.id)) {
+  if (!await canViewProfile(db, viewer.id, person.id)) {
     return (
       <div className="px-4 py-10 md:px-0">
         <EmptyState icon={Ban} title="This profile isn’t available">
@@ -112,9 +112,9 @@ export async function ProfileView({
     );
   }
 
-  const friends = listFriends(db, person.id);
-  const mutual = self ? [] : mutualFriends(db, viewer.id, person.id);
-  const stats = profileStats(db, viewer.id, person.id);
+  const friends = await listFriends(db, person.id);
+  const mutual = self ? [] : await mutualFriends(db, viewer.id, person.id);
+  const stats = await profileStats(db, viewer.id, person.id);
   const base = self ? "/profile" : `/u/${person.username}`;
   const tabs: { id: Tab; label: string; Icon: typeof Newspaper }[] = [
     { id: "posts", label: "Posts", Icon: Newspaper },
@@ -128,9 +128,9 @@ export async function ProfileView({
   const tab: Tab = rawTab === "edit" && self ? "edit" : tabs.some((item) => item.id === rawTab) ? (rawTab as Tab) : "posts";
   const blockedByMe = rel === "blocked";
   const section: ProfileSection | null = tab === "posts" || tab === "photos" || tab === "videos" || tab === "reels" ? tab : null;
-  const posts = section && !blockedByMe ? profilePosts(db, viewer.id, person.id, section) : [];
-  const photoPreview = tab === "posts" && !blockedByMe ? profilePosts(db, viewer.id, person.id, "photos").slice(0, 6) : [];
-  const activity = self && tab === "activity" ? sentActivity(db, person.id) : [];
+  const posts = section && !blockedByMe ? await profilePosts(db, viewer.id, person.id, section) : [];
+  const photoPreview = tab === "posts" && !blockedByMe ? (await profilePosts(db, viewer.id, person.id, "photos")).slice(0, 6) : [];
+  const activity = self && tab === "activity" ? await sentActivity(db, person.id) : [];
   const firstName = person.displayName.split(" ")[0];
   const [c1] = person.avatarColor ? [person.avatarColor] : ["#00bf8f"];
 
@@ -309,7 +309,17 @@ export async function ProfileView({
           </h2>
           {posts.length === 0 ? (
             <div className="px-4 md:px-0">
-              <EmptyState icon={ImageOff} title={self ? "Nothing made yet" : `${firstName} hasn’t shared anything with you`}>
+              <EmptyState
+                icon={ImageOff}
+                title={self ? "Nothing made yet" : `${firstName} hasn’t shared anything with you`}
+                action={
+                  self ? (
+                    <Link href="/create" className="press inline-flex h-11 items-center gap-2 rounded-full bg-brand px-5 text-[15px] font-semibold text-brand-on shadow-glow">
+                      Create a post
+                    </Link>
+                  ) : undefined
+                }
+              >
                 {self
                   ? "Create something, then pick who gets it."
                   : "Their posts only appear here once they, or someone they shared with, send one to you."}
@@ -341,11 +351,10 @@ export async function ProfileView({
                 >
                   {tab === "reels" ? (
                     <>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={`/media/${post.id}/0`} alt={post.mediaLabel ?? "Reel"} className="h-full w-full object-cover" loading="lazy" />
+                      {post.frames[0] ? <MediaStill postId={post.id} frame={post.frames[0]} alt={post.body.slice(0, 80) || "Reel"} /> : null}
                       <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 text-[11.5px] font-semibold text-white">
                         <Clapperboard className="mr-1 inline h-3 w-3" aria-hidden />
-                        {post.mediaLabel}
+                        <span className="line-clamp-2">{post.body}</span>
                       </span>
                     </>
                   ) : (
@@ -461,7 +470,7 @@ export async function ProfileView({
             </label>
             <fieldset>
               <legend className="text-sm font-semibold">Avatar color</legend>
-              <p className="text-[13px] text-ink-3">Photo upload is not connected yet.</p>
+              <p className="text-[13px] text-ink-3">Your avatar shows your initials on this color.</p>
               <div className="mt-2 flex flex-wrap gap-2.5">
                 {AVATAR_COLORS.map((color) => (
                   <label key={color} className="relative cursor-pointer">
