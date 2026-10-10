@@ -49,18 +49,18 @@ export default async function HomePage({
             <Video className="h-[18px] w-[18px] text-heart" aria-hidden /> Video
           </Link>
           <Link href="/create?type=reel" className="press flex h-10 items-center justify-center gap-2 rounded-xl text-[13.5px] font-semibold text-ink-2 hover:bg-surface-2">
-            <Clapperboard className="h-[18px] w-[18px] text-[#7b5cff]" aria-hidden /> Reel
+            <Clapperboard className="h-[18px] w-[18px] text-[#7b5cff]" aria-hidden /> Loop
           </Link>
         </div>
       </section>
 
-      {/* Reels strip: only reels someone sent you, plus your own. */}
+      {/* Loops strip: only reels someone sent you, plus your own. */}
       <section className="mb-2 bg-surface py-3 md:mb-4 md:rounded-[24px] md:border md:border-line/60 md:shadow-e1" aria-labelledby="reels-strip">
         <div className="flex items-center justify-between px-4">
           <h2 id="reels-strip" className="flex items-center gap-2 font-display text-[17px] font-bold tracking-tight">
-            <Clapperboard className="h-[18px] w-[18px] text-brand" aria-hidden /> Reels
+            <Clapperboard className="h-[18px] w-[18px] text-brand" aria-hidden /> Loops
           </h2>
-          <Link href="/reels" className="text-[13.5px] font-semibold text-brand-strong hover:underline">
+          <Link href="/loops" className="text-[13.5px] font-semibold text-brand-strong hover:underline">
             See all
           </Link>
         </div>
@@ -78,7 +78,7 @@ export default async function HomePage({
           </li>
           {reels.map((reel) => (
             <li key={reel.post.id} className="shrink-0">
-              <Link href={`/reels/${reel.post.id}`} className="relative block h-[176px] w-[104px] overflow-hidden rounded-2xl bg-black">
+              <Link href={`/loops/${reel.post.id}`} className="relative block h-[176px] w-[104px] overflow-hidden rounded-2xl bg-black">
                 {reel.post.frames[0] ? <MediaStill postId={reel.post.id} frame={reel.post.frames[0]} alt="" /> : null}
                 <span className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70" aria-hidden />
                 <span className="absolute left-2 top-2">

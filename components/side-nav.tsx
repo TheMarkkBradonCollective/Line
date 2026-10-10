@@ -15,7 +15,7 @@ export function SideNav({ unread, staff, requests = 0 }: { unread: number; staff
   const items: { href: string; label: string; Icon: LucideIcon; badge?: number }[] = [
     { href: "/timeline", label: "Home", Icon: House },
     { href: "/discover", label: "Discover", Icon: Compass },
-    { href: "/reels", label: "Reels", Icon: Clapperboard },
+    { href: "/loops", label: "Loops", Icon: Clapperboard },
     { href: "/friends", label: "Friends", Icon: Users, badge: requests },
     { href: "/notifications", label: "Notifications", Icon: Bell, badge: unread },
     { href: "/search", label: "Find people", Icon: Search },

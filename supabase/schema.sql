@@ -336,3 +336,8 @@ alter table hidden_posts enable row level security;
 alter table hidden_authors enable row level security;
 revoke all on table hidden_posts from anon, authenticated;
 revoke all on table hidden_authors from anon, authenticated;
+
+-- ── 20261010020000_tab_bar.sql ──
+-- LINE update 2026-10-10 (c): per-user bottom tab bar. Additive and safe to run more than once.
+-- Comma-separated tab keys, e.g. 'home,discover,reels,profile'. Null means the default bar.
+alter table profiles add column if not exists tab_bar text;

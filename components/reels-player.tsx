@@ -86,7 +86,7 @@ function ReelSlide({ reel, active, viewerId }: { reel: ReelItem; active: boolean
       <button
         type="button"
         className="absolute inset-0 flex items-center justify-center"
-        aria-label={playing ? "Pause reel" : "Play reel"}
+        aria-label={playing ? "Pause Loop" : "Play Loop"}
         onClick={() => setPaused((value) => !value)}
       >
         {!playing ? (
@@ -137,7 +137,7 @@ function ReelSlide({ reel, active, viewerId }: { reel: ReelItem; active: boolean
         </p>
         <p className="mt-0.5 text-[12.5px] font-medium text-white/85">
           {own
-            ? "Your reel"
+            ? "Your Loop"
             : reel.reachedBy && reel.reachedBy.id !== reel.author.id
               ? `Passed to you by ${reel.reachedBy.displayName}`
               : "Shared with you"}
@@ -177,7 +177,7 @@ export function ReelsPlayer({ reels, viewerId }: { reels: ReelItem[]; viewerId: 
         <h1 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight drop-shadow">
           <Clapperboard className="h-5 w-5" aria-hidden /> Reels
         </h1>
-        <span className="rounded-full bg-black/35 px-2.5 py-1 text-[11.5px] font-semibold backdrop-blur-md">Only reels shared with you</span>
+        <span className="rounded-full bg-black/35 px-2.5 py-1 text-[11.5px] font-semibold backdrop-blur-md">Only Loops shared with you</span>
       </div>
       <div ref={scroller} className="no-scrollbar h-full snap-y snap-mandatory overflow-y-auto overscroll-contain" data-testid="reels-scroller">
         {reels.map((reel, index) => (
@@ -188,8 +188,8 @@ export function ReelsPlayer({ reels, viewerId }: { reels: ReelItem[]; viewerId: 
         {reels.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center text-white">
             <Clapperboard className="h-10 w-10 text-brand" aria-hidden />
-            <p className="font-display text-xl font-bold">No reels yet</p>
-            <p className="text-[14px] text-white/75">When a friend shares a reel with you, it plays here. Nothing else does.</p>
+            <p className="font-display text-xl font-bold">No Loops yet</p>
+            <p className="text-[14px] text-white/75">When a friend shares a Loop with you, it plays here. Nothing else does.</p>
             <Link href="/create?type=reel" className="press mt-2 inline-flex h-11 items-center rounded-full bg-brand px-5 font-semibold text-white">
               Make a reel
             </Link>

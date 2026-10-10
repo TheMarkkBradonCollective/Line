@@ -26,7 +26,7 @@ const KIND = {
 function Row({ item }: { item: Item }) {
   const meta = KIND[item.kind as keyof typeof KIND] ?? KIND.shared_with_you;
   const { Icon } = meta;
-  const what = item.post_kind === "text" ? "a note" : item.post_kind && isVideoKind(item.post_kind) ? "a video" : "a photo";
+  const what = item.post_kind === "text" ? "a note" : item.post_kind === "reel" || item.post_kind === "short" ? "a Loop" : item.post_kind && isVideoKind(item.post_kind) ? "a video" : "a photo";
   const body = (
     <>
       <span className="relative shrink-0">
@@ -38,7 +38,7 @@ function Row({ item }: { item: Item }) {
       <span className="min-w-0 flex-1">
         <span className="block text-[14.5px] leading-snug text-ink">
           <span className="font-semibold">{item.actor_name}</span>{" "}
-          {item.kind === "shared_with_you" ? `sent you ${what}` : meta.verb}
+          {item.kind === "shared_with_you" ? `shared ${what} with you` : item.kind === "reshared_video" && (item.post_kind === "reel" || item.post_kind === "short") ? "reshared your Loop" : meta.verb}
         </span>
         {item.post_body ? <span className="mt-0.5 block truncate text-[13px] text-ink-3">{item.post_body}</span> : null}
         <span className="mt-0.5 block text-[12px] text-ink-3">{formatWhen(item.created_at)}</span>

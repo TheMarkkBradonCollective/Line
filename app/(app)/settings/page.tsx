@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { BookOpen, ChevronRight, EyeOff, KeyRound, Pencil, ShieldCheck, Trash2 } from "lucide-react";
+import { PanelBottom, BookOpen, ChevronRight, EyeOff, KeyRound, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 import { deleteAccountAction } from "@/app/actions";
 import { Notice } from "@/components/notice";
 import { PageHeader } from "@/components/page-header";
@@ -13,9 +13,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const user = await getCurrentUser();
   if (!user) redirect("/");
   const items = [
-    { href: "/profile?tab=edit", label: "Edit profile and bio", Icon: Pencil },
+    { href: "/profile/edit", label: "Edit profile and bio", Icon: Pencil },
     { href: "/friends?tab=privacy", label: "Privacy and blocking", Icon: ShieldCheck },
     { href: "/hidden", label: "Hidden people and posts", Icon: EyeOff },
+    { href: "/settings/tab-bar", label: "Tab bar", Icon: PanelBottom },
     { href: "/reset-password", label: "Change password", Icon: KeyRound },
     { href: "/how-line-works", label: "How LINE works", Icon: BookOpen },
   ];

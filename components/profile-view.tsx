@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import {
+  ArrowLeft,
   Activity,
   Ban,
   Briefcase,
@@ -30,6 +31,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Notice } from "@/components/notice";
 import { PostCard } from "@/components/post-card";
 import { ProfilePhotoButton } from "@/components/profile-photo-button";
+import { ProfileMenu } from "@/components/profile-menu";
 import { MediaStill, PostMedia } from "@/components/post-media";
 import { ReportForm } from "@/components/report-form";
 import { Button } from "@/components/ui/button";
@@ -41,6 +43,7 @@ import { getCurrentUser } from "@/lib/session";
 import {
   AVATAR_COLORS,
   followCounts,
+  isAuthorHidden,
   isFollowing,
   listFollows,
   getUserByUsername,
@@ -54,7 +57,7 @@ import {
 } from "@/lib/social";
 import type { User } from "@/lib/types";
 
-type Tab = "posts" | "about" | "friends" | "followers" | "following" | "photos" | "videos" | "reels" | "activity" | "edit";
+type Tab = "posts" | "about" | "friends" | "followers" | "following" | "photos" | "videos" | "reels" | "activity" | "edit" | "report";
 
 function AboutRows({ person }: { person: User }) {
   const rows = [
@@ -129,14 +132,13 @@ export async function ProfileView({
     { id: "following", label: "Following", Icon: Users },
     { id: "photos", label: "Photos", Icon: ImageIcon },
     { id: "videos", label: "Videos", Icon: Video },
-    { id: "reels", label: "Reels", Icon: Clapperboard },
+    { id: "reels", label: "Loops", Icon: Clapperboard },
     ...(self ? [{ id: "activity" as Tab, label: "Activity", Icon: Activity }] : []),
   ];
-  const tab: Tab = rawTab === "edit" && self ? "edit" : tabs.some((item) => item.id === rawTab) ? (rawTab as Tab) : "posts";
+  const tab: Tab = rawTab === "edit" && self ? "edit" : rawTab === "report" && !self ? "report" : tabs.some((item) => item.id === rawTab) ? (rawTab as Tab) : "posts";
   const blockedByMe = rel === "blocked";
   const section: ProfileSection | null = tab === "posts" || tab === "photos" || tab === "videos" || tab === "reels" ? tab : null;
   const posts = section && !blockedByMe ? await profilePosts(db, viewer.id, person.id, section) : [];
-  const photoPreview = tab === "posts" && !blockedByMe ? (await profilePosts(db, viewer.id, person.id, "photos")).slice(0, 6) : [];
   const activity = self && tab === "activity" ? await sentActivity(db, person.id) : [];
   const firstName = person.displayName.split(" ")[0];
   const fc = await followCounts(db, person.id);
@@ -144,241 +146,33 @@ export async function ProfileView({
   const followList = tab === "followers" || tab === "following" ? await listFollows(db, viewer.id, person.id, tab) : [];
   const [c1] = person.avatarColor ? [person.avatarColor] : ["#00bf8f"];
 
-  return (
-    <div>
-      <div className="bg-surface pb-1 md:mt-6 md:overflow-hidden md:rounded-[24px] md:border md:border-line/60 md:shadow-e1">
-        {/* Cover */}
-        <div
-          className="relative h-40 overflow-hidden md:h-52"
-          style={{ background: `linear-gradient(135deg, rgb(var(--brand)) 0%, ${c1} 55%, rgb(var(--brand-deep)) 100%)` }}
-          data-testid="profile-cover"
-        >
-          <svg viewBox="0 0 600 200" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 h-full w-full" aria-hidden>
-            <circle cx="520" cy="20" r="140" fill="white" opacity="0.12" />
-            <circle cx="80" cy="210" r="120" fill="white" opacity="0.08" />
-            <path d="M0 150 C 150 110 260 190 400 140 S 560 120 600 130 L600 200 L0 200 Z" fill="black" opacity="0.12" />
-            <text x="590" y="186" textAnchor="end" fontFamily="var(--font-display)" fontWeight="800" fontSize="120" fill="white" opacity="0.12" letterSpacing="-6">
-              LINE
-            </text>
-          </svg>
-          {person.coverUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={person.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover object-center" />
-          ) : null}
-          {self ? <ProfilePhotoButton which="cover" hasPhoto={Boolean(person.coverUrl)} className="absolute bottom-3 right-3" /> : null}
+  const hiddenByMe = !self && (await isAuthorHidden(db, viewer.id, person.id));
+  const photoGrid = tab === "posts" && !blockedByMe ? (await profilePosts(db, viewer.id, person.id, "photos")).slice(0, 9) : [];
+  const friendGrid = (mutual.length && !self ? [...mutual, ...friends.filter((f) => !mutual.some((m) => m.id === f.id))] : friends).slice(0, 9);
+  const subTitle: Record<string, string> = {
+    photos: "Photos", videos: "Videos", reels: "Loops", about: "About", friends: "Friends",
+    followers: "Followers", following: "Following", activity: "Activity", edit: "Edit profile", report: "Report",
+  };
+
+  if (tab !== "posts") {
+    // Full list pages ("See all"), not tabs.
+    return (
+      <div className="md:pt-6">
+        <div className="flex items-center gap-3 px-4 py-3 md:px-0" data-testid="profile-subpage">
+          <Link href={base} className="press flex items-center gap-2.5 rounded-full py-1 pr-3 text-ink hover:bg-surface-2" aria-label="Back to profile">
+            <ArrowLeft className="h-5 w-5" aria-hidden />
+            <Avatar initials={person.initials} color={person.avatarColor} src={person.avatarUrl} name={person.displayName} size="sm" />
+            <span className="min-w-0">
+              <span className="block truncate text-[15px] font-semibold leading-tight">{person.displayName}</span>
+              <span className="block text-[12.5px] text-ink-3">{subTitle[tab] ?? ""}</span>
+            </span>
+          </Link>
         </div>
-
-        <div className="px-4">
-          <div className="-mt-14 flex justify-center md:justify-start">
-            <div className="relative">
-              <Avatar initials={person.initials} color={person.avatarColor} src={person.avatarUrl} name={person.displayName} size="xl" ring className="relative shadow-e2" />
-              {self ? <ProfilePhotoButton which="avatar" hasPhoto={Boolean(person.avatarUrl)} className="absolute bottom-0 right-0" /> : null}
-            </div>
-          </div>
-          <div className="mt-2 text-center md:text-left">
-            <h1 className="font-display text-[28px] font-bold leading-tight tracking-tight">{person.displayName}</h1>
-            <p className="mt-0.5 flex flex-wrap items-center justify-center gap-x-2 text-[14px] text-ink-3 md:justify-start">
-              <Link href={`${base}?tab=friends`} className="font-semibold text-ink-2 hover:underline">
-                {stats.friends} {stats.friends === 1 ? "friend" : "friends"}
-              </Link>
-              <span aria-hidden>·</span>
-              <Link href={`${base}?tab=followers`} className="font-semibold text-ink-2 hover:underline" data-testid="followers-count">
-                {fc.followers} {fc.followers === 1 ? "follower" : "followers"}
-              </Link>
-              <span aria-hidden>·</span>
-              <Link href={`${base}?tab=following`} className="font-semibold text-ink-2 hover:underline" data-testid="following-count">
-                {fc.following} following
-              </Link>
-              {!self && mutual.length ? (
-                <>
-                  <span aria-hidden>·</span>
-                  <span>{mutual.length} mutual</span>
-                </>
-              ) : null}
-              {person.role !== "user" ? (
-                <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-brand-strong">
-                  {ROLE_LABELS[person.role as Role] ?? person.role}
-                </span>
-              ) : null}
-            </p>
-            {friends.length ? (
-              <div className="mt-2 flex justify-center md:justify-start">
-                <AvatarStack people={(mutual.length ? mutual : friends).slice(0, 6)} size="sm" max={6} />
-              </div>
-            ) : null}
-            {person.bio ? <p className="mx-auto mt-3 max-w-prose text-[15px] leading-relaxed text-ink md:mx-0">{person.bio}</p> : null}
-          </div>
-
-          <div className="mt-4 flex gap-2" data-testid="profile-actions">
-            {self ? (
-              <>
-                <Link href="/create" className="press inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-semibold text-brand-on">
-                  <Plus className="h-4 w-4" aria-hidden /> Create post
-                </Link>
-                <Link href="/profile?tab=edit" className="press inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-surface-2 text-sm font-semibold text-ink hover:bg-surface-3">
-                  <Pencil className="h-4 w-4" aria-hidden /> Edit profile
-                </Link>
-              </>
-            ) : (
-              <>
-                {rel === "none" ? (
-                  <form action={requestFriendAction} className="flex flex-1">
-                    <input type="hidden" name="username" value={person.username} />
-                    <input type="hidden" name="returnTo" value={`/u/${person.username}`} />
-                    <button type="submit" className="press inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-semibold text-brand-on">
-                      <UserPlus className="h-4 w-4" aria-hidden /> Add friend
-                    </button>
-                  </form>
-                ) : null}
-                {rel !== "blocked" && rel !== "blocked_by" ? (
-                  <form action={following ? unfollowAction : followAction} className="flex flex-1">
-                    <input type="hidden" name="userId" value={person.id} />
-                    <input type="hidden" name="returnTo" value={`/u/${person.username}`} />
-                    <button
-                      type="submit"
-                      data-testid="follow-button"
-                      className={
-                        following
-                          ? "press inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-surface-2 text-sm font-semibold text-ink hover:bg-surface-3"
-                          : "press inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-ink text-sm font-semibold text-[rgb(var(--surface))]"
-                      }
-                    >
-                      {following ? <UserMinus className="h-4 w-4" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
-                      {following ? "Following" : "Follow"}
-                    </button>
-                  </form>
-                ) : null}
-                {rel === "friends" ? (
-                  <span className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand-soft text-sm font-semibold text-brand-strong">
-                    <UserCheck className="h-4 w-4" aria-hidden /> Friends
-                  </span>
-                ) : null}
-                {rel === "outgoing" ? (
-                  <span className="inline-flex h-10 flex-1 items-center justify-center rounded-xl bg-surface-2 text-sm font-semibold text-ink-2">Request sent</span>
-                ) : null}
-                {rel === "incoming" ? (
-                  <Link href="/friends?tab=requests" className="press inline-flex h-10 flex-1 items-center justify-center rounded-xl bg-brand text-sm font-semibold text-brand-on">
-                    Respond to request
-                  </Link>
-                ) : null}
-                {rel === "blocked" ? (
-                  <Link href="/friends?tab=privacy" className="press inline-flex h-10 flex-1 items-center justify-center rounded-xl bg-surface-2 text-sm font-semibold text-ink-2">
-                    Blocked · manage
-                  </Link>
-                ) : null}
-                {rel === "friends" ? (
-                  <Link
-                    href={`/create?to=${person.username}`}
-                    className="press inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-surface-2 text-sm font-semibold text-ink hover:bg-surface-3"
-                    data-testid="message-button"
-                  >
-                    <MessageCircle className="h-4 w-4" aria-hidden /> Message
-                  </Link>
-                ) : null}
-                {rel !== "blocked" ? (
-                  <form action={blockAction}>
-                    <input type="hidden" name="userId" value={person.id} />
-                    <input type="hidden" name="returnTo" value={`/u/${person.username}`} />
-                    <button type="submit" aria-label={`Block ${person.displayName}`} className="tap press flex h-10 items-center justify-center rounded-xl bg-surface-2 text-ink-2 hover:text-danger">
-                      <Ban className="h-4 w-4" aria-hidden />
-                    </button>
-                  </form>
-                ) : null}
-              </>
-            )}
-          </div>
-
-          {!self ? (
-            <p className="mt-3 flex items-center gap-2 rounded-2xl bg-brand-soft px-3.5 py-2.5 text-[13.5px] font-medium text-ink" data-testid="shared-note">
-              <Lock className="h-4 w-4 shrink-0 text-brand-strong" aria-hidden />
-              You’ll only see what’s been shared with you{following ? `, plus what ${firstName} sends to followers` : ""}.
-            </p>
-          ) : null}
-
-          <nav className="no-scrollbar relative -mx-4 mt-3 flex overflow-x-auto border-t border-line/70 px-2" aria-label="Profile sections">
-            {tabs.map(({ id, label }) => (
-              <Link
-                key={id}
-                href={id === "posts" ? base : `${base}?tab=${id}`}
-                aria-current={tab === id ? "page" : undefined}
-                scroll={false}
-                className="relative shrink-0 px-2.5 py-3 text-[14px] font-semibold text-ink-3 hover:text-ink aria-[current=page]:text-brand-strong aria-[current=page]:after:absolute aria-[current=page]:after:inset-x-2 aria-[current=page]:after:bottom-0 aria-[current=page]:after:h-[3px] aria-[current=page]:after:rounded-full aria-[current=page]:after:bg-brand"
-              >
-                {label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-      </div>
-
-      <div className="px-4 md:px-0">
-        <Notice notice={notice} error={error} />
-      </div>
-
-      {tab === "posts" ? (
-        <section className="mt-2 md:mt-4">
-          {/* Intro card */}
-          <div className="mb-2 bg-surface p-4 md:mb-4 md:rounded-[24px] md:border md:border-line/60 md:shadow-e1">
-            <h2 className="font-display text-[19px] font-bold tracking-tight">Intro</h2>
-            <div className="mt-3">
-              <AboutRows person={person} />
-            </div>
-            {photoPreview.length ? (
-              <>
-                <div className="mt-4 flex items-center justify-between">
-                  <h3 className="text-[15px] font-semibold">Photos</h3>
-                  <Link href={`${base}?tab=photos`} className="text-[13.5px] font-semibold text-brand-strong hover:underline">
-                    See all
-                  </Link>
-                </div>
-                <div className="mt-2 grid grid-cols-3 gap-1 overflow-hidden rounded-2xl">
-                  {photoPreview.map(({ post }) => (
-                    <Link key={post.id} href={`/post/${post.id}`} className="block">
-                      <PostMedia postId={post.id} kind={post.kind} body={post.body} frames={post.frames} variant="tile" />
-                    </Link>
-                  ))}
-                </div>
-              </>
-            ) : null}
-            {!self && mutual.length ? (
-              <p className="mt-4 flex items-center gap-2 text-[13.5px] text-ink-2">
-                <AvatarStack people={mutual.slice(0, 3)} size="xs" max={3} />
-                Mutual friends: {mutual.map((item) => item.displayName.split(" ")[0]).join(", ")}
-              </p>
-            ) : null}
-          </div>
-
-          <h2 className="px-4 pb-2 pt-2 font-display text-[19px] font-bold tracking-tight md:px-1">
-            {self ? "Your posts" : `Posts shared with you`}
-          </h2>
-          {posts.length === 0 ? (
-            <div className="px-4 md:px-0">
-              <EmptyState
-                icon={ImageOff}
-                title={self ? "Nothing made yet" : `${firstName} hasn’t shared anything with you`}
-                action={
-                  self ? (
-                    <Link href="/create" className="press inline-flex h-11 items-center gap-2 rounded-full bg-brand px-5 text-[15px] font-semibold text-brand-on shadow-glow">
-                      Create a post
-                    </Link>
-                  ) : undefined
-                }
-              >
-                {self
-                  ? "Create something, then pick who gets it."
-                  : "Their posts only appear here once they, or someone they shared with, send one to you."}
-              </EmptyState>
-            </div>
-          ) : (
-            posts.map((item) => <PostCard key={item.post.id} item={item} author={person} viewerId={viewer.id} />)
-          )}
-        </section>
-      ) : null}
-
+        <div className="px-4 md:px-0"><Notice notice={notice} error={error} /></div>
       {tab === "photos" || tab === "videos" || tab === "reels" ? (
         <section className="mt-2 bg-surface p-3 md:mt-4 md:rounded-[24px] md:border md:border-line/60 md:shadow-e1">
           <h2 className="px-1 pb-2 font-display text-[19px] font-bold tracking-tight">
-            {tab === "photos" ? "Photos" : tab === "videos" ? "Videos" : "Reels"}
+            {tab === "photos" ? "Photos" : tab === "videos" ? "Videos" : "Loops"}
             {!self ? <span className="ml-2 text-[13px] font-medium text-ink-3">shared with you</span> : null}
           </h2>
           {posts.length === 0 ? (
@@ -390,12 +184,12 @@ export async function ProfileView({
               {posts.map(({ post }) => (
                 <Link
                   key={post.id}
-                  href={tab === "reels" ? `/reels/${post.id}` : `/post/${post.id}`}
+                  href={tab === "reels" ? `/loops/${post.id}` : `/post/${post.id}`}
                   className={tab === "reels" ? "relative block aspect-[9/14] overflow-hidden rounded-xl bg-black" : "block overflow-hidden rounded-xl"}
                 >
                   {tab === "reels" ? (
                     <>
-                      {post.frames[0] ? <MediaStill postId={post.id} frame={post.frames[0]} alt={post.body.slice(0, 80) || "Reel"} /> : null}
+                      {post.frames[0] ? <MediaStill postId={post.id} frame={post.frames[0]} alt={post.body.slice(0, 80) || "Loop"} /> : null}
                       <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 text-[11.5px] font-semibold text-white">
                         <Clapperboard className="mr-1 inline h-3 w-3" aria-hidden />
                         <span className="line-clamp-2">{post.body}</span>
@@ -420,7 +214,7 @@ export async function ProfileView({
           {person.bio ? <p className="text-[15px] leading-relaxed text-ink">{person.bio}</p> : null}
           <AboutRows person={person} />
           {self ? (
-            <Link href="/profile?tab=edit" className="press mt-1 inline-flex h-10 w-fit items-center gap-1.5 rounded-xl bg-surface-2 px-4 text-sm font-semibold text-ink hover:bg-surface-3">
+            <Link href="/profile/edit" className="press mt-1 inline-flex h-10 w-fit items-center gap-1.5 rounded-xl bg-surface-2 px-4 text-sm font-semibold text-ink hover:bg-surface-3">
               <Pencil className="h-4 w-4" aria-hidden /> Edit details
             </Link>
           ) : null}
@@ -565,11 +359,216 @@ export async function ProfileView({
         </section>
       ) : null}
 
-      {!self ? (
-        <div className="mt-6 px-4 md:px-0">
+      {tab === "report" && !self ? (
+        <div className="mt-2 px-4 md:px-0">
           <ReportForm targetType="profile" targetId={person.id} returnTo={`/u/${person.username}`} />
         </div>
       ) : null}
+
+      </div>
+    );
+  }
+
+  const card = "bg-surface p-4 md:rounded-[24px] md:border md:border-line/60 md:shadow-e1";
+  const btn = "press inline-flex h-10 items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-semibold";
+
+  return (
+    <div className="md:pt-6" data-testid="profile-page">
+      {/* Header: cover, overlapping photo, name, counts, actions */}
+      <div className="overflow-hidden bg-surface md:rounded-[28px] md:border md:border-line/60 md:shadow-e1">
+        <div
+          className="relative h-48 overflow-hidden sm:h-60 lg:h-[340px]"
+          style={{ background: `linear-gradient(135deg, rgb(var(--brand)) 0%, ${c1} 55%, rgb(var(--brand-deep)) 100%)` }}
+          data-testid="profile-cover"
+        >
+          <svg viewBox="0 0 600 200" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 h-full w-full" aria-hidden>
+            <circle cx="520" cy="20" r="140" fill="white" opacity="0.12" />
+            <circle cx="80" cy="210" r="120" fill="white" opacity="0.08" />
+            <text x="590" y="186" textAnchor="end" fontFamily="var(--font-display)" fontWeight="800" fontSize="120" fill="white" opacity="0.12" letterSpacing="-6">LINE</text>
+          </svg>
+          {person.coverUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={person.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover object-center" />
+          ) : null}
+          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/25 to-transparent" aria-hidden />
+          {self ? <ProfilePhotoButton which="cover" hasPhoto={Boolean(person.coverUrl)} className="absolute bottom-3 right-3" /> : null}
+        </div>
+
+        <div className="px-4 pb-4 lg:px-8">
+          <div className="flex flex-col items-center gap-3 md:flex-row md:items-end md:gap-5">
+            <div className="relative -mt-20 shrink-0 md:-mt-16">
+              <Avatar initials={person.initials} color={person.avatarColor} src={person.avatarUrl} name={person.displayName} size="xxl" ring className="relative shadow-e2" />
+              {self ? <ProfilePhotoButton which="avatar" hasPhoto={Boolean(person.avatarUrl)} className="absolute bottom-2 right-2" /> : null}
+            </div>
+            <div className="min-w-0 flex-1 text-center md:pb-2 md:text-left">
+              <h1 className="font-display text-[30px] font-bold leading-tight tracking-tight lg:text-[34px]">
+                {person.displayName}
+                {person.role !== "user" ? (
+                  <span className="ml-2 inline-block translate-y-[-4px] rounded-full bg-brand-soft px-2 py-0.5 align-middle text-[11px] font-semibold uppercase tracking-wide text-brand-strong">
+                    {ROLE_LABELS[person.role as Role] ?? person.role}
+                  </span>
+                ) : null}
+              </h1>
+              <p className="mt-1 flex flex-wrap items-center justify-center gap-x-2 text-[14.5px] text-ink-3 md:justify-start" data-testid="profile-counts">
+                <Link href={`${base}/friends`} className="font-semibold text-ink-2 hover:underline">
+                  {stats.friends} {stats.friends === 1 ? "friend" : "friends"}
+                </Link>
+                <span aria-hidden>·</span>
+                <Link href={`${base}/followers`} className="font-semibold text-ink-2 hover:underline" data-testid="followers-count">
+                  {fc.followers} {fc.followers === 1 ? "follower" : "followers"}
+                </Link>
+                <span aria-hidden>·</span>
+                <Link href={`${base}/following`} className="font-semibold text-ink-2 hover:underline" data-testid="following-count">
+                  {fc.following} following
+                </Link>
+                {!self && mutual.length ? (<><span aria-hidden>·</span><span>{mutual.length} mutual</span></>) : null}
+              </p>
+              {person.bio ? <p className="mx-auto mt-2 max-w-prose text-[15px] leading-relaxed text-ink md:mx-0">{person.bio}</p> : null}
+              {friends.length ? (
+                <div className="mt-2 flex justify-center md:justify-start">
+                  <AvatarStack people={(mutual.length ? mutual : friends).slice(0, 8)} size="sm" max={8} />
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex w-full flex-wrap justify-center gap-2 md:w-auto md:justify-end md:pb-2" data-testid="profile-actions">
+              {self ? (
+                <>
+                  <Link href="/create" className={`${btn} bg-brand text-brand-on`}><Plus className="h-4 w-4" aria-hidden /> Create post</Link>
+                  <Link href={`${base}/edit`} className={`${btn} bg-surface-2 text-ink hover:bg-surface-3`}><Pencil className="h-4 w-4" aria-hidden /> Edit profile</Link>
+                </>
+              ) : (
+                <>
+                  {rel === "none" ? (
+                    <form action={requestFriendAction}>
+                      <input type="hidden" name="username" value={person.username} />
+                      <input type="hidden" name="returnTo" value={`/u/${person.username}`} />
+                      <button type="submit" className={`${btn} bg-brand text-brand-on`} data-testid="add-friend"><UserPlus className="h-4 w-4" aria-hidden /> Add friend</button>
+                    </form>
+                  ) : null}
+                  {rel === "friends" ? <span className={`${btn} bg-brand-soft text-brand-strong`}><UserCheck className="h-4 w-4" aria-hidden /> Friends</span> : null}
+                  {rel === "outgoing" ? <span className={`${btn} bg-surface-2 text-ink-2`}>Request sent</span> : null}
+                  {rel === "incoming" ? <Link href="/friends?tab=requests" className={`${btn} bg-brand text-brand-on`}>Respond to request</Link> : null}
+                  {rel === "blocked" ? <Link href="/friends?tab=privacy" className={`${btn} bg-surface-2 text-ink-2`}>Blocked · manage</Link> : null}
+                  {rel !== "blocked" && rel !== "blocked_by" ? (
+                    <form action={following ? unfollowAction : followAction}>
+                      <input type="hidden" name="userId" value={person.id} />
+                      <input type="hidden" name="returnTo" value={`/u/${person.username}`} />
+                      <button type="submit" data-testid="follow-button" className={following ? `${btn} bg-surface-2 text-ink hover:bg-surface-3` : `${btn} bg-ink text-[rgb(var(--surface))]`}>
+                        {following ? <UserMinus className="h-4 w-4" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
+                        {following ? "Following" : "Follow"}
+                      </button>
+                    </form>
+                  ) : null}
+                  {rel === "friends" ? (
+                    <Link href={`/create?to=${person.username}`} className={`${btn} bg-surface-2 text-ink hover:bg-surface-3`} data-testid="message-button">
+                      <MessageCircle className="h-4 w-4" aria-hidden /> Message
+                    </Link>
+                  ) : null}
+                  <ProfileMenu userId={person.id} username={person.username} name={person.displayName} blocked={rel === "blocked"} hidden={hiddenByMe} />
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 md:px-0"><Notice notice={notice} error={error} /></div>
+
+      {/* One scrolling page: cards on the left (stacked on mobile), posts on the right */}
+      <div className="mt-2 grid gap-2 md:mt-4 md:gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
+        <aside className="grid gap-2 md:gap-4 lg:sticky lg:top-6">
+          <section className={card} data-testid="intro-card">
+            <h2 className="font-display text-[20px] font-bold tracking-tight">Intro</h2>
+            {person.bio ? <p className="mt-2 text-center text-[15px] leading-relaxed text-ink">{person.bio}</p> : null}
+            <div className="mt-3"><AboutRows person={person} /></div>
+            {self ? (
+              <Link href={`${base}/edit`} className={`${btn} mt-4 w-full bg-surface-2 text-ink hover:bg-surface-3`}>Edit details</Link>
+            ) : null}
+          </section>
+
+          <section className={card} data-testid="photos-card">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-[20px] font-bold tracking-tight">Photos</h2>
+              <Link href={`${base}/photos`} className="text-[14px] font-semibold text-brand-strong hover:underline">See all</Link>
+            </div>
+            {!self ? <p className="text-[12.5px] text-ink-3">Only photos shared with you</p> : null}
+            {photoGrid.length ? (
+              <div className="mt-3 grid grid-cols-3 gap-1 overflow-hidden rounded-2xl">
+                {photoGrid.map(({ post }) => (
+                  <Link key={post.id} href={`/post/${post.id}`} className="block">
+                    <PostMedia postId={post.id} kind={post.kind} body={post.body} frames={post.frames} variant="tile" />
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-ink-3">{self ? "Your photos will show here." : "No photos shared with you yet."}</p>
+            )}
+          </section>
+
+          <section className={card} data-testid="friends-card">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-[20px] font-bold tracking-tight">Friends</h2>
+              <Link href={`${base}/friends`} className="text-[14px] font-semibold text-brand-strong hover:underline">See all</Link>
+            </div>
+            <p className="text-[13.5px] text-ink-3">
+              {stats.friends} {stats.friends === 1 ? "friend" : "friends"}
+              {!self && mutual.length ? ` · ${mutual.length} mutual` : ""}
+            </p>
+            {friendGrid.length ? (
+              <div className="mt-3 grid grid-cols-3 gap-x-2 gap-y-3">
+                {friendGrid.map((friend) => (
+                  <Link key={friend.id} href={friend.id === viewer.id ? "/profile" : `/u/${friend.username}`} className="group block min-w-0">
+                    <span
+                      className="relative block aspect-square overflow-hidden rounded-xl"
+                      style={{ background: `linear-gradient(135deg, ${friend.avatarColor}, rgb(var(--brand-deep)))` }}
+                    >
+                      {friend.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={friend.avatarUrl} alt="" className="h-full w-full object-cover transition group-hover:scale-105" />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center font-display text-2xl font-bold text-white">{friend.initials}</span>
+                      )}
+                    </span>
+                    <span className="mt-1 block truncate text-[13px] font-semibold text-ink">{friend.displayName}</span>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-ink-3">No friends yet.</p>
+            )}
+          </section>
+        </aside>
+
+        <section className="grid min-w-0 content-start gap-2 md:gap-4" data-testid="profile-posts">
+          {self ? (
+            <div className={`${card} flex items-center gap-3`} data-testid="profile-composer">
+              <Avatar initials={person.initials} color={person.avatarColor} src={person.avatarUrl} name={person.displayName} size="md" />
+              <Link href="/create" className="flex h-11 flex-1 items-center rounded-full bg-surface-2 px-4 text-[15px] text-ink-3 hover:bg-surface-3">
+                What’s on your mind, {firstName}?
+              </Link>
+              <Link href="/create?type=photo" aria-label="Add a photo" className="tap press flex items-center justify-center rounded-full text-[#2f8f3a] hover:bg-surface-2">
+                <ImageIcon className="h-6 w-6" aria-hidden />
+              </Link>
+            </div>
+          ) : (
+            <p className="mx-4 flex items-center gap-2 rounded-2xl bg-brand-soft px-3.5 py-2.5 text-[13.5px] font-medium text-ink md:mx-0" data-testid="shared-note">
+              <Lock className="h-4 w-4 shrink-0 text-brand-strong" aria-hidden />
+              You’ll only see what’s been shared with you{following ? `, plus what ${firstName} sends to followers` : ""}.
+            </p>
+          )}
+          <h2 className="px-4 font-display text-[20px] font-bold tracking-tight md:px-1">{self ? "Posts" : "Posts shared with you"}</h2>
+          {posts.length === 0 ? (
+            <div className="px-4 md:px-0">
+              <EmptyState icon={ImageOff} title={self ? "Nothing made yet" : `${firstName} hasn’t shared anything with you`}>
+                {self ? "Create something, then pick who gets it." : "Their posts only appear here once they, or someone they shared with, send one to you."}
+              </EmptyState>
+            </div>
+          ) : (
+            <div>{posts.map((item) => <PostCard key={item.post.id} item={item} author={person} viewerId={viewer.id} />)}</div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

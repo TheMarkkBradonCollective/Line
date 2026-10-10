@@ -13,7 +13,7 @@ const KINDS = [
   { id: "text", label: "Text", hint: "A status or a note", Icon: Type, tint: "text-brand-strong bg-brand-soft" },
   { id: "photo", label: "Photo", hint: "One or several", Icon: ImageIcon, tint: "text-[#2f8f3a] bg-[#e3f6e5]" },
   { id: "video", label: "Video", hint: "Plays in the feed", Icon: Video, tint: "text-heart bg-[#ffe4ea]" },
-  { id: "reel", label: "Reel", hint: "Vertical, full screen", Icon: Clapperboard, tint: "text-[#6a4cf0] bg-[#ece8ff]" },
+  { id: "reel", label: "Loop", hint: "Vertical, full screen", Icon: Clapperboard, tint: "text-[#6a4cf0] bg-[#ece8ff]" },
 ] as const;
 
 function Step({ n, title, hint, children }: { n: number; title: string; hint?: string; children: React.ReactNode }) {
@@ -95,7 +95,7 @@ export default async function CreatePage({
         </Step>
 
         <div data-step="frames">
-          <Step n={2} title="Add photos or a video" hint="Photo posts take up to 6 images. Videos and reels take one clip.">
+          <Step n={2} title="Add photos or a video" hint="Photo posts take up to 6 images. Videos and Loops take one clip.">
             <MediaUploader initialKind={type} />
           </Step>
         </div>

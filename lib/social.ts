@@ -367,7 +367,7 @@ export function checkFrames(authorId: number, kind: string, frames: Frame[]) {
     if (frames.some((frame) => !frame.mime.startsWith("image/"))) throw new Error("Photo posts take images only.");
     return frames.slice(0, MAX_PHOTOS);
   }
-  if (!frames.length) throw new Error(kind === "reel" ? "Add a video for your reel." : "Add a video.");
+  if (!frames.length) throw new Error(kind === "reel" ? "Add a video for your Loop." : "Add a video.");
   if (frames.length > 1 || !frames[0].mime.startsWith("video/")) throw new Error("Add one video file.");
   return frames;
 }
@@ -1297,9 +1297,9 @@ export async function listNotifications(db: Db, userId: number) {
     .filter((row, i) => !blocked.has(row.actor_id) && visible[i])
     .map((row) => row);
   return kept.map((row) => {
-    let text = `${row.actor_name} shared something with you.`;
+    let text = `${row.actor_name} shared ${row.post_kind === "reel" || row.post_kind === "short" ? "a Loop" : "something"} with you.`;
     if (row.kind === "shared_onward") text = `${row.actor_name} shared your post onward.`;
-    if (row.kind === "reshared_video") text = `${row.actor_name} reshared your video.`;
+    if (row.kind === "reshared_video") text = `${row.actor_name} reshared your ${row.post_kind === "reel" || row.post_kind === "short" ? "Loop" : "video"}.`;
     if (row.kind === "commented") text = `${row.actor_name} commented on your post.`;
     if (row.kind === "replied") text = `${row.actor_name} replied to your comment.`;
     if (row.kind === "followed_you") text = `${row.actor_name} started following you.`;
@@ -1644,4 +1644,28 @@ export async function deleteProfile(db: Db, userId: number) {
   const row = (await db.get("SELECT auth_id FROM profiles WHERE id = ?", [userId])) as { auth_id: string | null } | undefined;
   await db.run("DELETE FROM profiles WHERE id = ?", [userId]);
   return row?.auth_id ?? null;
+}
+
+export async function isAuthorHidden(db: Db, userId: number, authorId: number) {
+  return Boolean(await db.get("SELECT 1 AS ok FROM hidden_authors WHERE user_id = ? AND author_id = ?", [userId, authorId]));
+}
+
+/** The saved tab bar, or null if unset or the tab_bar column doesn't exist yet (SQL not run). */
+export async function getTabBar(db: Db, userId: number): Promise<string | null> {
+  try {
+    const row = (await db.get("SELECT tab_bar FROM profiles WHERE id = ?", [userId])) as { tab_bar: string | null } | undefined;
+    return row?.tab_bar ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Returns false when the column isn't there yet, so the client keeps a local copy instead. */
+export async function setTabBar(db: Db, userId: number, tabs: string[] | null) {
+  try {
+    await db.run("UPDATE profiles SET tab_bar = ? WHERE id = ?", [tabs ? tabs.join(",") : null, userId]);
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { BookOpen, Settings, EyeOff, Bell, ChevronRight, Clapperboard, Layers, LifeBuoy, LogOut, Search, Shield, ShieldCheck, Users } from "lucide-react";
+import { House, Compass, UserRound, BookOpen, Settings, EyeOff, Bell, ChevronRight, Clapperboard, Layers, LifeBuoy, LogOut, Search, Shield, ShieldCheck, Users } from "lucide-react";
 import { logoutAction } from "@/app/actions";
 import { Avatar } from "@/components/avatar";
 import { getDb } from "@/lib/db";
@@ -12,8 +12,11 @@ export default async function MenuPage() {
   if (!user) redirect("/");
   const staff = (await listPermissions(getDb(), user.id)).length > 0;
   const items = [
+    { href: "/timeline", label: "Home", Icon: House },
+    { href: "/discover", label: "Discover", Icon: Compass },
+    { href: "/profile", label: "Profile", Icon: UserRound },
     { href: "/posts", label: "My posts and who has them", Icon: Layers },
-    { href: "/reels", label: "Reels", Icon: Clapperboard },
+    { href: "/loops", label: "Loops", Icon: Clapperboard },
     { href: "/friends", label: "Friends", Icon: Users },
     { href: "/friends?tab=groups", label: "Groups and lists", Icon: Users },
     { href: "/notifications", label: "Notifications", Icon: Bell },
@@ -22,7 +25,7 @@ export default async function MenuPage() {
     { href: "/hidden", label: "Hidden people and posts", Icon: EyeOff },
     { href: "/settings", label: "Settings", Icon: Settings },
     { href: "/how-line-works", label: "How LINE works", Icon: BookOpen },
-    { href: "/profile?tab=edit", label: "Help and support", Icon: LifeBuoy },
+    { href: "/profile/edit", label: "Help and support", Icon: LifeBuoy },
     ...(staff ? [{ href: "/staff", label: "Staff desk", Icon: Shield }] : []),
   ];
   return (
