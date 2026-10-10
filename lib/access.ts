@@ -8,11 +8,14 @@ import type { Db } from "./db";
  * Every feed, profile tab, post page, reel, comment thread, reaction, and media URL goes
  * through postAccess / canViewPost. The UI never decides this on its own.
  *
+ * A post the author sent to "Followers" is also visible to anyone who currently follows the author.
+ * Only the author can use that audience; following never allows direct shares.
+ *
  * Staff with moderation grants may open a post as a case file (allowStaff). That never
  * puts the post in their feed, on a profile, or in Reels.
  */
 
-export type Access = "author" | "shared" | "staff" | null;
+export type Access = "author" | "shared" | "follower" | "staff" | null;
 
 type PostRef = { id: number; authorId: number; hidden: number };
 
@@ -36,13 +39,18 @@ export async function postAccess(db: Db, viewer: number | { id: number }, post: 
             EXISTS (SELECT 1 FROM blocks b
                     WHERE (b.blocker_id = ? AND b.blocked_id = p.author_id)
                        OR (b.blocker_id = p.author_id AND b.blocked_id = ?)) AS blocked,
-            EXISTS (SELECT 1 FROM shares s WHERE s.post_id = p.id AND s.to_user_id = ?) AS shared
+            EXISTS (SELECT 1 FROM shares s WHERE s.post_id = p.id AND s.to_user_id = ?) AS shared,
+            EXISTS (SELECT 1 FROM follower_shares fs
+                    JOIN follows f ON f.followee_id = fs.from_user_id AND f.follower_id = ?
+                    WHERE fs.post_id = p.id AND fs.from_user_id = p.author_id) AS followed
      FROM posts p WHERE p.id = ?`,
-    [viewerId, viewerId, viewerId, postId],
-  )) as { author_id: number; hidden: number; blocked: boolean; shared: boolean } | undefined;
+    [viewerId, viewerId, viewerId, viewerId, postId],
+  )) as { author_id: number; hidden: number; blocked: boolean; shared: boolean; followed: boolean } | undefined;
   if (!row) return null;
   if (row.author_id === viewerId) return "author";
   if (!row.hidden && !row.blocked && row.shared) return "shared";
+  // The author sent it to Followers and the viewer follows the author (now; unfollowing ends it).
+  if (!row.hidden && !row.blocked && row.followed) return "follower";
   return (await isModerator(db, viewerId)) ? "staff" : null;
 }
 
@@ -53,7 +61,7 @@ export async function canViewPost(
   options: { allowStaff?: boolean } = {},
 ) {
   const access = await postAccess(db, viewer, post);
-  if (access === "author" || access === "shared") return true;
+  if (access === "author" || access === "shared" || access === "follower") return true;
   return Boolean(options.allowStaff && access === "staff");
 }
 

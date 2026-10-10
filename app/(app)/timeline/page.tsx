@@ -31,7 +31,7 @@ export default async function HomePage({
       <section className="mb-2 bg-surface px-4 pb-2 pt-3 md:mb-4 md:rounded-[24px] md:border md:border-line/60 md:shadow-e1" aria-label="Create a post">
         <div className="flex items-center gap-3">
           <Link href="/profile" className="shrink-0 rounded-full">
-            <Avatar initials={user.initials} color={user.avatarColor} name={user.displayName} size="md" />
+            <Avatar initials={user.initials} color={user.avatarColor} src={user.avatarUrl} name={user.displayName} size="md" />
           </Link>
           <Link
             href="/create"
@@ -82,7 +82,7 @@ export default async function HomePage({
                 {reel.post.frames[0] ? <MediaStill postId={reel.post.id} frame={reel.post.frames[0]} alt="" /> : null}
                 <span className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70" aria-hidden />
                 <span className="absolute left-2 top-2">
-                  <Avatar initials={reel.author.initials} color={reel.author.avatarColor} name={reel.author.displayName} size="sm" ring />
+                  <Avatar initials={reel.author.initials} color={reel.author.avatarColor} src={reel.author.avatarUrl} name={reel.author.displayName} size="sm" ring />
                 </span>
                 <span className="absolute inset-x-2 bottom-2 text-[12px] font-semibold leading-tight text-white">
                   <span className="line-clamp-2">{reel.post.body}</span>

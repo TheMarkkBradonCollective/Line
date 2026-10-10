@@ -47,7 +47,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             {cards.map(({ user: person, mutual, relationship }) => (
               <li key={person.id} className="flex min-h-[68px] items-center gap-3 px-4 py-2.5">
                 <Link href={`/u/${person.username}`} className="flex min-w-0 flex-1 items-center gap-3 text-ink">
-                  <Avatar initials={person.initials} color={person.avatarColor} name={person.displayName} size="md" />
+                  <Avatar initials={person.initials} color={person.avatarColor} src={person.avatarUrl} name={person.displayName} size="md" />
                   <span className="min-w-0">
                     <span className="block truncate text-[15px] font-semibold">{person.displayName}</span>
                     <span className="flex items-center gap-1.5 truncate text-[13px] text-ink-3">

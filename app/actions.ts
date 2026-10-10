@@ -6,9 +6,14 @@ import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { PERMISSIONS } from "@/lib/permissions";
 import { cleanUsername, ensureProfile, getCurrentUser } from "@/lib/session";
-import { confirmUploads, createUploadTargets, type UploadRequest, type UploadTarget } from "@/lib/storage";
+import { confirmUploads, createUploadTargets, removeMedia, removeProfileImage, uploadProfileImage, type UploadRequest, type UploadTarget } from "@/lib/storage";
 import { supabaseServer } from "@/lib/supabase/server";
 import {
+  deletePost,
+  follow,
+  unfollow,
+  setProfileImage,
+  shareToFollowers,
   acceptFriend,
   addComment,
   blockUser,
@@ -108,6 +113,7 @@ function ids(formData: FormData, name: string) {
 function choiceOf(formData: FormData): RecipientChoice {
   return {
     self: formData.get("self") === "on",
+    followers: formData.get("followers") === "on",
     friendIds: ids(formData, "friend"),
     groupIds: ids(formData, "group"),
     listIds: ids(formData, "list"),
@@ -230,14 +236,23 @@ export async function createPostAction(formData: FormData) {
     revalidatePath("/timeline");
     revalidatePath("/posts");
     const extra = result.errors.length ? ` ${result.errors.join(" ")}` : "";
-    redirect(withQuery("/timeline", "notice", `${shareSummary(result.created.length, result.rejected)}${extra}`));
+    const toFollowers = result.followers ? "Sent to your followers. " : "";
+    const summary = result.created.length || result.rejected.length || !result.followers ? shareSummary(result.created.length, result.rejected) : "";
+    redirect(withQuery("/timeline", "notice", `${toFollowers}${summary}${extra}`.trim()));
   });
 }
 
 export async function shareExistingAction(formData: FormData) {
   const postId = Number(formData.get("postId"));
   await run(`/share/${postId}`, async (user) => {
-    const expanded = await expandRecipients(getDb(), user.id, choiceOf(formData));
+    const choice = choiceOf(formData);
+    // Only the author can send to Followers; shareToFollowers rejects anyone else.
+    if (choice.followers) await shareToFollowers(getDb(), postId, user.id, String(formData.get("note") || ""));
+    const expanded = await expandRecipients(getDb(), user.id, choice);
+    if (!expanded.recipients.length && choice.followers) {
+      revalidatePath("/discover");
+      redirect(withQuery("/timeline", "notice", "Sent to your followers."));
+    }
     if (!expanded.recipients.length) {
       throw new Error("Choose your timeline, a friend, a group, or a list.");
     }
@@ -296,6 +311,7 @@ export type SheetResult = {
 export async function shareFromSheetAction(input: {
   postId: number;
   self: boolean;
+  followers?: boolean;
   friendIds: number[];
   groupIds: number[];
   listIds: number[];
@@ -306,6 +322,17 @@ export async function shareFromSheetAction(input: {
   const db = getDb();
   const clean = (values: unknown) =>
     (Array.isArray(values) ? values : []).map(Number).filter((value) => Number.isInteger(value) && value > 0);
+  if (input.followers) {
+    // Only the author may use the Followers audience. shareToFollowers rejects anyone else.
+    try {
+      const sent = await shareToFollowers(db, Number(input.postId), user.id, String(input.note || ""));
+      if (sent.alreadySent && !input.self && !input.friendIds?.length && !input.groupIds?.length && !input.listIds?.length) {
+        return { ok: false, delivered: [], rejected: [], message: "Already sent to your followers." };
+      }
+    } catch (error) {
+      return { ok: false, delivered: [], rejected: [], message: error instanceof Error ? error.message : "Nothing was shared." };
+    }
+  }
   const expanded = await expandRecipients(db, user.id, {
     self: Boolean(input.self),
     friendIds: clean(input.friendIds),
@@ -313,6 +340,10 @@ export async function shareFromSheetAction(input: {
     listIds: clean(input.listIds),
   });
   if (!expanded.recipients.length) {
+    if (input.followers) {
+      revalidatePath("/discover");
+      return { ok: true, delivered: [{ userId: -1, name: "Your followers", initials: "★", color: "#00bf8f" }], rejected: [], message: "Sent to your followers." };
+    }
     return { ok: false, delivered: [], rejected: [], message: "Pick your timeline, a friend, a group, or a list." };
   }
   try {
@@ -602,5 +633,61 @@ export async function permissionsAction(formData: FormData) {
     const selected = formData.getAll("permission").map(String);
     await modifyPermissions(getDb(), user, Number(formData.get("userId")), selected, String(formData.get("reason") || ""));
     redirect(withQuery("/staff", "notice", "Permission grants replaced."));
+  });
+}
+
+/** The author deletes their own post: shares, comments, reactions go with it, and its files leave Storage. */
+export async function deletePostAction(formData: FormData) {
+  const postId = Number(formData.get("postId"));
+  const returnTo = safePath(formData.get("returnTo"), "/timeline");
+  await run(returnTo, async (user) => {
+    const paths = await deletePost(getDb(), user.id, postId);
+    await removeMedia(paths).catch(() => undefined);
+    revalidatePath("/timeline");
+    revalidatePath("/posts");
+    revalidatePath("/discover");
+    const back = returnTo.startsWith("/post/") || returnTo.startsWith("/reels/") ? "/timeline" : returnTo;
+    redirect(withQuery(back, "notice", "Post deleted."));
+  });
+}
+
+export async function followAction(formData: FormData) {
+  const returnTo = safePath(formData.get("returnTo"), "/discover");
+  await run(returnTo, async (user) => {
+    await follow(getDb(), user.id, Number(formData.get("userId")));
+    revalidatePath(returnTo);
+    revalidatePath("/discover");
+    redirect(returnTo);
+  });
+}
+
+export async function unfollowAction(formData: FormData) {
+  const returnTo = safePath(formData.get("returnTo"), "/discover");
+  await run(returnTo, async (user) => {
+    await unfollow(getDb(), user.id, Number(formData.get("userId")));
+    revalidatePath(returnTo);
+    revalidatePath("/discover");
+    redirect(returnTo);
+  });
+}
+
+/** Upload or replace a profile or cover photo. Stored in the public line-profiles bucket. */
+export async function profileImageAction(formData: FormData) {
+  await run("/profile", async (user) => {
+    const which = formData.get("which") === "cover" ? "cover" : "avatar";
+    const db = getDb();
+    if (formData.get("remove") === "1") {
+      const old = await setProfileImage(db, user.id, which, null);
+      await removeProfileImage(old).catch(() => undefined);
+      revalidatePath("/profile");
+      redirect(withQuery("/profile", "notice", which === "cover" ? "Cover photo removed." : "Profile photo removed."));
+    }
+    const file = formData.get("file");
+    if (!(file instanceof File) || !file.size) throw new Error("Pick a photo.");
+    const path = await uploadProfileImage(user.id, which, file);
+    const old = await setProfileImage(db, user.id, which, path);
+    await removeProfileImage(old).catch(() => undefined);
+    revalidatePath("/profile");
+    redirect(withQuery("/profile", "notice", which === "cover" ? "Cover photo updated." : "Profile photo updated."));
   });
 }

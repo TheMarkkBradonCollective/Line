@@ -61,7 +61,7 @@ function PersonRow({ person, children, sub }: { person: User; children?: React.R
   return (
     <div className="flex min-h-[64px] items-center gap-3 px-4 py-2.5">
       <Link href={`/u/${person.username}`} className="flex min-w-0 flex-1 items-center gap-3 text-ink">
-        <Avatar initials={person.initials} color={person.avatarColor} name={person.displayName} size="md" />
+        <Avatar initials={person.initials} color={person.avatarColor} src={person.avatarUrl} name={person.displayName} size="md" />
         <span className="min-w-0">
           <span className="block truncate text-[15px] font-semibold">{person.displayName}</span>
           <span className="block truncate text-[13px] text-ink-3">{sub ?? `@${person.username}`}</span>
@@ -100,7 +100,7 @@ function MemberPicker({ friends }: { friends: User[] }) {
       {friends.map((friend) => (
         <label key={friend.id} className="pick chip cursor-pointer pl-1">
           <input type="checkbox" name="member" value={friend.id} className="sr-only" />
-          <Avatar initials={friend.initials} color={friend.avatarColor} name={friend.displayName} size="xs" />
+          <Avatar initials={friend.initials} color={friend.avatarColor} src={friend.avatarUrl} name={friend.displayName} size="xs" />
           {friend.displayName.split(" ")[0]}
         </label>
       ))}
@@ -187,7 +187,7 @@ export default async function FriendsPage({
                 {suggestions.map(({ user: person, mutual }) => (
                   <li key={person.id} className="surface-card flex w-[156px] shrink-0 flex-col items-center p-3.5 text-center">
                     <Link href={`/u/${person.username}`} className="flex flex-col items-center text-ink">
-                      <Avatar initials={person.initials} color={person.avatarColor} name={person.displayName} size="lg" />
+                      <Avatar initials={person.initials} color={person.avatarColor} src={person.avatarUrl} name={person.displayName} size="lg" />
                       <span className="mt-2 line-clamp-1 text-[14.5px] font-semibold">{person.displayName}</span>
                     </Link>
                     <span className="mt-1 flex items-center gap-1.5 text-[12px] text-ink-3">
@@ -405,7 +405,7 @@ export default async function FriendsPage({
                 {friends.map((friend) => (
                   <label key={friend.id} className="pick chip cursor-pointer pl-1">
                     <input type="checkbox" name="allow" value={friend.id} defaultChecked={allowIds.has(friend.id)} className="sr-only" />
-                    <Avatar initials={friend.initials} color={friend.avatarColor} name={friend.displayName} size="xs" />
+                    <Avatar initials={friend.initials} color={friend.avatarColor} src={friend.avatarUrl} name={friend.displayName} size="xs" />
                     {friend.displayName}
                   </label>
                 ))}

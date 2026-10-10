@@ -40,7 +40,7 @@ export function RightRail({ circle, suggestions = [], requests = 0 }: { circle: 
                 href={`/u/${user.username}`}
                 className="group flex min-h-[52px] items-center gap-3 rounded-2xl px-2 py-1.5 text-ink hover:bg-surface-2"
               >
-                <Avatar initials={user.initials} color={user.avatarColor} name={user.displayName} size="md" />
+                <Avatar initials={user.initials} color={user.avatarColor} src={user.avatarUrl} name={user.displayName} size="md" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[15px] font-semibold">{user.displayName}</span>
                   <span className="block truncate text-[12.5px] text-ink-3">
@@ -77,7 +77,7 @@ export function RightRail({ circle, suggestions = [], requests = 0 }: { circle: 
             {suggestions.map(({ user, mutual }) => (
               <li key={user.id}>
                 <Link href={`/u/${user.username}`} className="flex min-h-[52px] items-center gap-3 rounded-2xl px-2 py-1.5 text-ink hover:bg-surface-2">
-                  <Avatar initials={user.initials} color={user.avatarColor} name={user.displayName} size="md" />
+                  <Avatar initials={user.initials} color={user.avatarColor} src={user.avatarUrl} name={user.displayName} size="md" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[15px] font-semibold">{user.displayName}</span>
                     <span className="block truncate text-[12.5px] text-ink-3">

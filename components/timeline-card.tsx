@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ArrowRight, Flag, Lock, Send } from "lucide-react";
+import { ArrowRight, Lock, Send } from "lucide-react";
+import { PostMenu } from "@/components/post-menu";
 import { Avatar, AvatarStack } from "@/components/avatar";
 import { PostActions } from "@/components/post-actions";
 import { PostMedia } from "@/components/post-media";
@@ -58,7 +59,7 @@ export function TimelineCard({ item, index = 0 }: { item: TimelineItem; index?: 
 
       <header className="flex items-center gap-3 px-4 pb-2.5 pt-3">
         <Link href={`/u/${item.author.username}`} className="shrink-0 rounded-full">
-          <Avatar initials={item.author.initials} color={item.author.avatarColor} name={item.author.displayName} size="md" />
+          <Avatar initials={item.author.initials} color={item.author.avatarColor} src={item.author.avatarUrl} name={item.author.displayName} size="md" />
         </Link>
         <div className="min-w-0 flex-1">
           <Link className="block truncate text-[15px] font-semibold leading-tight text-ink hover:underline" href={`/u/${item.author.username}`}>
@@ -77,13 +78,7 @@ export function TimelineCard({ item, index = 0 }: { item: TimelineItem; index?: 
             <span className="truncate">{audience}</span>
           </p>
         </div>
-        <Link
-          href={`/post/${item.postId}#report`}
-          aria-label="Report this post"
-          className="tap press -mr-2 flex shrink-0 items-center justify-center rounded-full text-ink-3 hover:bg-surface-2 hover:text-ink"
-        >
-          <Flag className="h-[17px] w-[17px]" aria-hidden />
-        </Link>
+        <PostMenu postId={item.postId} own={item.author.id === item.toUserId} returnTo="/timeline" />
       </header>
 
       {chain.length >= 3 && !self ? (
@@ -91,7 +86,7 @@ export function TimelineCard({ item, index = 0 }: { item: TimelineItem; index?: 
           {chain.map((person, i) => (
             <li key={`${person.id}-${i}`} className="flex shrink-0 items-center gap-1.5">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 py-0.5 pl-0.5 pr-2">
-                <Avatar initials={person.initials} color={person.avatarColor} name={person.displayName} size="xs" />
+                <Avatar initials={person.initials} color={person.avatarColor} src={person.avatarUrl} name={person.displayName} size="xs" />
                 {first(person.displayName)}
               </span>
               <ArrowRight className="h-3 w-3 text-brand-strong" aria-hidden />

@@ -19,15 +19,17 @@ import {
   Plus,
   Send,
   UserCheck,
+  UserMinus,
   UserPlus,
   Users,
   Video,
 } from "lucide-react";
-import { blockAction, requestFriendAction, ticketAction, updateProfileAction } from "@/app/actions";
+import { blockAction, followAction, unfollowAction, requestFriendAction, ticketAction, updateProfileAction } from "@/app/actions";
 import { Avatar, AvatarStack } from "@/components/avatar";
 import { EmptyState } from "@/components/empty-state";
 import { Notice } from "@/components/notice";
 import { PostCard } from "@/components/post-card";
+import { ProfilePhotoButton } from "@/components/profile-photo-button";
 import { MediaStill, PostMedia } from "@/components/post-media";
 import { ReportForm } from "@/components/report-form";
 import { Button } from "@/components/ui/button";
@@ -38,6 +40,9 @@ import { ROLE_LABELS, type Role } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import {
   AVATAR_COLORS,
+  followCounts,
+  isFollowing,
+  listFollows,
   getUserByUsername,
   listFriends,
   mutualFriends,
@@ -49,7 +54,7 @@ import {
 } from "@/lib/social";
 import type { User } from "@/lib/types";
 
-type Tab = "posts" | "about" | "friends" | "photos" | "videos" | "reels" | "activity" | "edit";
+type Tab = "posts" | "about" | "friends" | "followers" | "following" | "photos" | "videos" | "reels" | "activity" | "edit";
 
 function AboutRows({ person }: { person: User }) {
   const rows = [
@@ -73,7 +78,7 @@ function AboutRows({ person }: { person: User }) {
 function PersonRow({ person, sub }: { person: User; sub?: string }) {
   return (
     <Link href={`/u/${person.username}`} className="flex min-h-[60px] items-center gap-3 px-4 py-2.5 text-ink hover:bg-surface-2">
-      <Avatar initials={person.initials} color={person.avatarColor} name={person.displayName} size="md" />
+      <Avatar initials={person.initials} color={person.avatarColor} src={person.avatarUrl} name={person.displayName} size="md" />
       <span className="min-w-0">
         <span className="block truncate text-[15px] font-semibold">{person.displayName}</span>
         <span className="block truncate text-[13px] text-ink-3">{sub ?? `@${person.username}`}</span>
@@ -120,6 +125,8 @@ export async function ProfileView({
     { id: "posts", label: "Posts", Icon: Newspaper },
     { id: "about", label: "About", Icon: Info },
     { id: "friends", label: "Friends", Icon: Users },
+    { id: "followers", label: "Followers", Icon: Users },
+    { id: "following", label: "Following", Icon: Users },
     { id: "photos", label: "Photos", Icon: ImageIcon },
     { id: "videos", label: "Videos", Icon: Video },
     { id: "reels", label: "Reels", Icon: Clapperboard },
@@ -132,6 +139,9 @@ export async function ProfileView({
   const photoPreview = tab === "posts" && !blockedByMe ? (await profilePosts(db, viewer.id, person.id, "photos")).slice(0, 6) : [];
   const activity = self && tab === "activity" ? await sentActivity(db, person.id) : [];
   const firstName = person.displayName.split(" ")[0];
+  const fc = await followCounts(db, person.id);
+  const following = !self && (await isFollowing(db, viewer.id, person.id));
+  const followList = tab === "followers" || tab === "following" ? await listFollows(db, viewer.id, person.id, tab) : [];
   const [c1] = person.avatarColor ? [person.avatarColor] : ["#00bf8f"];
 
   return (
@@ -151,17 +161,33 @@ export async function ProfileView({
               LINE
             </text>
           </svg>
+          {person.coverUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={person.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover object-center" />
+          ) : null}
+          {self ? <ProfilePhotoButton which="cover" hasPhoto={Boolean(person.coverUrl)} className="absolute bottom-3 right-3" /> : null}
         </div>
 
         <div className="px-4">
           <div className="-mt-14 flex justify-center md:justify-start">
-            <Avatar initials={person.initials} color={person.avatarColor} name={person.displayName} size="xl" ring className="relative shadow-e2" />
+            <div className="relative">
+              <Avatar initials={person.initials} color={person.avatarColor} src={person.avatarUrl} name={person.displayName} size="xl" ring className="relative shadow-e2" />
+              {self ? <ProfilePhotoButton which="avatar" hasPhoto={Boolean(person.avatarUrl)} className="absolute bottom-0 right-0" /> : null}
+            </div>
           </div>
           <div className="mt-2 text-center md:text-left">
             <h1 className="font-display text-[28px] font-bold leading-tight tracking-tight">{person.displayName}</h1>
             <p className="mt-0.5 flex flex-wrap items-center justify-center gap-x-2 text-[14px] text-ink-3 md:justify-start">
               <Link href={`${base}?tab=friends`} className="font-semibold text-ink-2 hover:underline">
                 {stats.friends} {stats.friends === 1 ? "friend" : "friends"}
+              </Link>
+              <span aria-hidden>·</span>
+              <Link href={`${base}?tab=followers`} className="font-semibold text-ink-2 hover:underline" data-testid="followers-count">
+                {fc.followers} {fc.followers === 1 ? "follower" : "followers"}
+              </Link>
+              <span aria-hidden>·</span>
+              <Link href={`${base}?tab=following`} className="font-semibold text-ink-2 hover:underline" data-testid="following-count">
+                {fc.following} following
               </Link>
               {!self && mutual.length ? (
                 <>
@@ -204,6 +230,24 @@ export async function ProfileView({
                     </button>
                   </form>
                 ) : null}
+                {rel !== "blocked" && rel !== "blocked_by" ? (
+                  <form action={following ? unfollowAction : followAction} className="flex flex-1">
+                    <input type="hidden" name="userId" value={person.id} />
+                    <input type="hidden" name="returnTo" value={`/u/${person.username}`} />
+                    <button
+                      type="submit"
+                      data-testid="follow-button"
+                      className={
+                        following
+                          ? "press inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-surface-2 text-sm font-semibold text-ink hover:bg-surface-3"
+                          : "press inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-ink text-sm font-semibold text-[rgb(var(--surface))]"
+                      }
+                    >
+                      {following ? <UserMinus className="h-4 w-4" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
+                      {following ? "Following" : "Follow"}
+                    </button>
+                  </form>
+                ) : null}
                 {rel === "friends" ? (
                   <span className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand-soft text-sm font-semibold text-brand-strong">
                     <UserCheck className="h-4 w-4" aria-hidden /> Friends
@@ -222,7 +266,7 @@ export async function ProfileView({
                     Blocked · manage
                   </Link>
                 ) : null}
-                {rel !== "blocked" ? (
+                {rel === "friends" ? (
                   <Link
                     href={`/create?to=${person.username}`}
                     className="press inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-surface-2 text-sm font-semibold text-ink hover:bg-surface-3"
@@ -247,7 +291,7 @@ export async function ProfileView({
           {!self ? (
             <p className="mt-3 flex items-center gap-2 rounded-2xl bg-brand-soft px-3.5 py-2.5 text-[13.5px] font-medium text-ink" data-testid="shared-note">
               <Lock className="h-4 w-4 shrink-0 text-brand-strong" aria-hidden />
-              You’ll only see what’s been shared with you.
+              You’ll only see what’s been shared with you{following ? `, plus what ${firstName} sends to followers` : ""}.
             </p>
           ) : null}
 
@@ -381,6 +425,27 @@ export async function ProfileView({
             </Link>
           ) : null}
           <p className="text-[12.5px] text-ink-3">Profiles are open to everyone signed in. Posts are not: each one is seen only by the people it was shared with.</p>
+        </section>
+      ) : null}
+
+      {tab === "followers" || tab === "following" ? (
+        <section className="mt-2 md:mt-4">
+          <div className="bg-surface md:rounded-[24px] md:border md:border-line/60 md:shadow-e1" data-testid="follow-list">
+            <h2 className="px-4 pb-1 pt-4 font-display text-[17px] font-bold tracking-tight">
+              {tab === "followers" ? "Followers" : "Following"} · {tab === "followers" ? fc.followers : fc.following}
+            </h2>
+            {followList.length === 0 ? (
+              <p className="px-4 pb-4 text-sm text-ink-3">{tab === "followers" ? "No followers yet." : "Not following anyone yet."}</p>
+            ) : (
+              <ul className="divide-y divide-line/70">
+                {followList.map((item) => (
+                  <li key={item.id}>
+                    <PersonRow person={item} sub={item.id === viewer.id ? "You" : undefined} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </section>
       ) : null}
 

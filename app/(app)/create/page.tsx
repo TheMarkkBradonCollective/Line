@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { RecipientPicker } from "@/components/recipient-picker";
 import { getDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
-import { areFriends, getSetting, getUserByUsername, listCustomLists, listFriends, listGroups } from "@/lib/social";
+import { areFriends, followCounts, getSetting, getUserByUsername, listCustomLists, listFriends, listGroups } from "@/lib/social";
 
 const KINDS = [
   { id: "text", label: "Text", hint: "A status or a note", Icon: Type, tint: "text-brand-strong bg-brand-soft" },
@@ -100,8 +100,9 @@ export default async function CreatePage({
           </Step>
         </div>
 
-        <Step n={3} title="Who gets it?" hint="Each pick puts it in that person’s feed. Nobody else sees it — not even on your profile.">
+        <Step n={3} title="Who gets it?" hint="Pick Followers, friends, groups or lists. Nobody else sees it — not even on your profile.">
           <RecipientPicker
+            followers={{ count: (await followCounts(db, user.id)).followers }}
             friends={await listFriends(db, user.id)}
             groups={await listGroups(db, user.id)}
             lists={await listCustomLists(db, user.id)}

@@ -26,7 +26,7 @@ export default async function MenuPage() {
     <div className="px-4 pt-4 md:px-0 md:pt-6">
       <h1 className="page-title">Menu</h1>
       <Link href="/profile" className="surface-card mt-4 flex items-center gap-3 p-3.5 text-ink">
-        <Avatar initials={user.initials} color={user.avatarColor} name={user.displayName} size="lg" />
+        <Avatar initials={user.initials} color={user.avatarColor} src={user.avatarUrl} name={user.displayName} size="lg" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[16px] font-semibold">{user.displayName}</span>
           <span className="block text-[13px] text-ink-3">See your profile</span>

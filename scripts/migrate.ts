@@ -4,7 +4,7 @@
  * the private media bucket exists. Creates no users and no content: the live site starts empty.
  */
 import { createSql, Db, scriptDatabaseUrl } from "../lib/db";
-import { ensureMediaBucket } from "../lib/storage";
+import { ensureMediaBucket, ensureProfileBucket } from "../lib/storage";
 import { applyMigrations } from "./lib/migrations";
 
 async function main() {
@@ -16,6 +16,7 @@ async function main() {
   }
   if (process.env.SUPABASE_SECRET_KEY && process.env.NEXT_PUBLIC_SUPABASE_URL) {
     console.log(`media bucket: ${await ensureMediaBucket()}`);
+    console.log(`profile bucket: ${await ensureProfileBucket()}`);
   } else {
     console.log("media bucket: skipped (set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY to check it)");
   }

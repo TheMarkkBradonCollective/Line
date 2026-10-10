@@ -22,7 +22,9 @@ export function Avatar({
   size = "md",
   ring = false,
   className,
+  src,
 }: {
+  src?: string | null;
   initials: string;
   color: string;
   name: string;
@@ -41,9 +43,14 @@ export function Avatar({
       title={name}
     >
       <span className="sr-only">{name}</span>
-      <span aria-hidden className="drop-shadow-[0_1px_1px_rgb(0_0_0/0.25)]">
-        {initials}
-      </span>
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" aria-hidden className="h-full w-full rounded-full object-cover object-center" />
+      ) : (
+        <span aria-hidden className="drop-shadow-[0_1px_1px_rgb(0_0_0/0.25)]">
+          {initials}
+        </span>
+      )}
     </span>
   );
   if (!ring) return face;
@@ -57,7 +64,7 @@ export function Avatar({
   );
 }
 
-type Face = { initials: string; avatarColor: string; displayName: string };
+type Face = { initials: string; avatarColor: string; displayName: string; avatarUrl?: string | null };
 
 /** Overlapping avatars. Used for share chains, so order matters: first person on the left. */
 export function AvatarStack({ people, size = "xs", max = 4 }: { people: Face[]; size?: Size; max?: number }) {
@@ -71,7 +78,7 @@ export function AvatarStack({ people, size = "xs", max = 4 }: { people: Face[]; 
           className="-ml-1.5 inline-flex rounded-full ring-2 ring-[rgb(var(--surface))] first:ml-0"
           style={{ zIndex: shown.length - index }}
         >
-          <Avatar initials={person.initials} color={person.avatarColor} name={person.displayName} size={size} />
+          <Avatar initials={person.initials} color={person.avatarColor} name={person.displayName} size={size} src={person.avatarUrl} />
         </span>
       ))}
       {extra > 0 ? (

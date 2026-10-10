@@ -10,7 +10,7 @@ function CommentForm({ postId, viewer, parentId, placeholder, autoFocus }: { pos
     <form action={addCommentAction} className="flex items-start gap-2.5" id={parentId ? `reply-${parentId}` : "comment-box"}>
       <input type="hidden" name="postId" value={postId} />
       {parentId ? <input type="hidden" name="parentId" value={parentId} /> : null}
-      <Avatar initials={viewer.initials} color={viewer.avatarColor} name={viewer.displayName} size={parentId ? "xs" : "sm"} />
+      <Avatar initials={viewer.initials} color={viewer.avatarColor} src={viewer.avatarUrl} name={viewer.displayName} size={parentId ? "xs" : "sm"} />
       <label className="sr-only" htmlFor={parentId ? `reply-body-${parentId}` : "comment-body"}>
         {placeholder}
       </label>
@@ -38,7 +38,7 @@ function Bubble({ comment, postId, replyTo }: { comment: CommentNode; postId: nu
     <div id={`c-${comment.id}`} className="scroll-mt-24">
       <div className="flex items-start gap-2.5">
         <Link href={`/u/${comment.author.username}`} className="shrink-0 rounded-full">
-          <Avatar initials={comment.author.initials} color={comment.author.avatarColor} name={comment.author.displayName} size="sm" />
+          <Avatar initials={comment.author.initials} color={comment.author.avatarColor} src={comment.author.avatarUrl} name={comment.author.displayName} size="sm" />
         </Link>
         <div className="min-w-0">
           <div className="w-fit max-w-full rounded-[18px] bg-surface-2 px-3.5 py-2">

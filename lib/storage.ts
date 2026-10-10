@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID } from "crypto";
 import { supabaseAdmin } from "./supabase/admin";
 import { extensionFor, IMAGE_TYPES, MAX_UPLOAD_BYTES, MEDIA_BUCKET, VIDEO_TYPES } from "./media-rules";
-import type { Frame } from "./types";
+import { PROFILE_BUCKET, type Frame } from "./types";
 
 /**
  * Private media in Supabase Storage. The bucket has no public access and no storage policies.
@@ -83,4 +83,34 @@ export async function ensureMediaBucket() {
   const { error } = await admin.storage.createBucket(MEDIA_BUCKET, options);
   if (error) throw error;
   return "created";
+}
+
+// ── Profile and cover photos: public bucket, public profile info ─────────────
+const PROFILE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+export const MAX_PROFILE_BYTES = 8 * 1024 * 1024;
+
+export async function uploadProfileImage(userId: number, which: "avatar" | "cover", file: File) {
+  if (!PROFILE_TYPES.includes(file.type)) throw new Error("Use a JPEG, PNG or WebP photo.");
+  if (file.size > MAX_PROFILE_BYTES) throw new Error("Photos can be up to 8 MB.");
+  const path = `p/${userId}/${which}-${randomUUID()}.${extensionFor(file.type)}`;
+  const { error } = await supabaseAdmin()
+    .storage.from(PROFILE_BUCKET)
+    .upload(path, Buffer.from(await file.arrayBuffer()), { contentType: file.type, cacheControl: "31536000", upsert: false });
+  if (error) throw new Error("That photo didn’t upload. Try again.");
+  return path;
+}
+
+export async function removeProfileImage(path: string | null) {
+  if (!path || !path.startsWith("p/")) return;
+  await supabaseAdmin().storage.from(PROFILE_BUCKET).remove([path]);
+}
+
+/** Creates the public profile-photo bucket if needed. Safe to run again. */
+export async function ensureProfileBucket() {
+  const admin = supabaseAdmin();
+  const options = { public: true, fileSizeLimit: 10 * 1024 * 1024, allowedMimeTypes: PROFILE_TYPES };
+  const { data } = await admin.storage.getBucket(PROFILE_BUCKET);
+  const { error } = data ? await admin.storage.updateBucket(PROFILE_BUCKET, options) : await admin.storage.createBucket(PROFILE_BUCKET, options);
+  if (error) throw error;
+  return data ? "updated" : "created";
 }

@@ -6,7 +6,7 @@ import { SharePanel } from "@/components/share-panel";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
-import { canViewPost, getPost, listCustomLists, listFriends, listGroups } from "@/lib/social";
+import { canViewPost, followCounts, sentToFollowers, getPost, listCustomLists, listFriends, listGroups } from "@/lib/social";
 
 export default async function SharePage({
   params,
@@ -36,7 +36,7 @@ export default async function SharePage({
         <form action={shareExistingAction} className="mx-4 mt-6 grid gap-4 md:mx-0">
           <input type="hidden" name="postId" value={post.id} />
           <input className="field" name="note" maxLength={200} placeholder="Optional note" aria-label="Note" />
-          <RecipientPicker friends={await listFriends(db, user.id)} groups={await listGroups(db, user.id)} lists={await listCustomLists(db, user.id)} />
+          <RecipientPicker followers={post.authorId === user.id ? { count: (await followCounts(db, user.id)).followers, alreadySent: await sentToFollowers(db, post.id) } : null} friends={await listFriends(db, user.id)} groups={await listGroups(db, user.id)} lists={await listCustomLists(db, user.id)} />
           <Button type="submit" size="lg">
             Share
           </Button>

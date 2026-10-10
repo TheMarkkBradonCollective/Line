@@ -1,4 +1,4 @@
-import { Layers, UserRound, Users } from "lucide-react";
+import { Layers, Rss, UserRound, Users } from "lucide-react";
 import { Avatar, AvatarStack } from "@/components/avatar";
 import type { User } from "@/lib/types";
 
@@ -6,9 +6,38 @@ type Group = { id: number; name: string; members: User[] };
 type List = { id: number; name: string; members: User[] };
 
 /** Server-rendered recipient picker for Create and the no-JS share page. Same rules as the share sheet. */
-export function RecipientPicker({ friends, groups, lists, selected = [] }: { friends: User[]; groups: Group[]; lists: List[]; selected?: number[] }) {
+export function RecipientPicker({
+  friends,
+  groups,
+  lists,
+  selected = [],
+  followers = null,
+}: {
+  friends: User[];
+  groups: Group[];
+  lists: List[];
+  selected?: number[];
+  /** Shown only for the post's author. Null hides the Followers audience. */
+  followers?: { count: number; alreadySent?: boolean } | null;
+}) {
   return (
     <div className="grid gap-5">
+      {followers ? (
+        <label className="pick flex min-h-[64px] items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-soft/60" data-testid="audience-followers">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink text-[rgb(var(--surface))]">
+            <Rss className="h-5 w-5" aria-hidden />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-semibold">
+              Followers <span className="font-normal text-ink-3">· {followers.count}</span>
+            </span>
+            <span className="block text-[12.5px] text-ink-3">
+              {followers.alreadySent ? "Already sent to your followers." : "Everyone who follows you, now and later. Shows in their Discover."}
+            </span>
+          </span>
+          <input type="checkbox" name="followers" disabled={followers.alreadySent} />
+        </label>
+      ) : null}
       <label className="pick flex min-h-[64px] items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-deep text-white">
           <UserRound className="h-5 w-5" aria-hidden />
@@ -27,7 +56,7 @@ export function RecipientPicker({ friends, groups, lists, selected = [] }: { fri
           {friends.map((friend) => (
             <label key={friend.id} className="pick chip min-h-[44px] cursor-pointer pl-1.5 pr-3.5">
               <input type="checkbox" name="friend" value={friend.id} defaultChecked={selected.includes(friend.id)} className="sr-only" />
-              <Avatar initials={friend.initials} color={friend.avatarColor} name={friend.displayName} size="xs" />
+              <Avatar initials={friend.initials} color={friend.avatarColor} src={friend.avatarUrl} name={friend.displayName} size="xs" />
               <span className="text-ink">{friend.displayName}</span>
             </label>
           ))}
