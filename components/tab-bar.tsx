@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Clapperboard, Compass, House, Layers, Plus, UserRound, Users, UsersRound, type LucideIcon } from "lucide-react";
+import { MessageCircle, Bell, Clapperboard, Compass, House, Layers, Plus, UserRound, Users, UsersRound, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { DEFAULT_TABS, normalizeTabs, TAB_OPTIONS, TAB_STORAGE_KEY, type TabKey } from "@/lib/tab-bar";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,7 @@ const ICONS: Record<TabKey, LucideIcon> = {
   alerts: Bell,
   groups: UsersRound,
   posts: Layers,
+  messages: MessageCircle,
 };
 
 function toTab(key: TabKey): Tab & { key: TabKey } {

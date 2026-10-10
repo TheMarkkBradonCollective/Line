@@ -25,6 +25,9 @@ export const LINE_TABLES = [
   "follower_shares",
   "hidden_posts",
   "hidden_authors",
+  "line_groups",
+  "line_group_members",
+  "group_posts",
 ] as const;
 
 const DIR = path.join(process.cwd(), "supabase", "migrations");

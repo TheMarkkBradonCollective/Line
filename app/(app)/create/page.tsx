@@ -5,6 +5,7 @@ import { MediaUploader } from "@/components/media-uploader";
 import { Notice } from "@/components/notice";
 import { PageHeader } from "@/components/page-header";
 import { RecipientPicker } from "@/components/recipient-picker";
+import { groupTargets } from "@/lib/groups";
 import { getDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { areFriends, followCounts, getSetting, getUserByUsername, listCustomLists, listFriends, listGroups } from "@/lib/social";
@@ -34,7 +35,7 @@ function Step({ n, title, hint, children }: { n: number; title: string; hint?: s
 export default async function CreatePage({
   searchParams,
 }: {
-  searchParams: Promise<{ notice?: string; error?: string; type?: string; to?: string }>;
+  searchParams: Promise<{ notice?: string; error?: string; type?: string; to?: string; group?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/");
@@ -107,6 +108,8 @@ export default async function CreatePage({
             groups={await listGroups(db, user.id)}
             lists={await listCustomLists(db, user.id)}
             selected={target && targetIsFriend ? [target.id] : []}
+            communities={await groupTargets(db, user.id, null)}
+            selectedCommunity={Number(query.group) || null}
           />
           <label className="mt-4 block">
             <span className="sr-only">Note on the share</span>

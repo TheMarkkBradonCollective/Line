@@ -22,7 +22,7 @@ function DeleteButton() {
 }
 
 /** The ⋯ menu on a post: Report for everyone, Delete (with a confirmation) for the author. */
-export function PostMenu({ postId, own, returnTo, className }: { postId: number; own: boolean; returnTo?: string; className?: string }) {
+export function PostMenu({ postId, own, returnTo, className }: { postId: number; own: boolean; returnTo?: string; className?: string; authorId?: number; authorName?: string; groupId?: number; surface?: string }) {
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
