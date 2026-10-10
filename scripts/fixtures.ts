@@ -744,11 +744,11 @@ export async function seed(db: Db) {
     category: "other",
     details: "Sample case for the moderator queue. Nothing from Riley was shared to my timeline.",
   });
-  const spam = await createReport(db, alex.id, {
+  const spam = await createReport(db, marcus.id, {
     targetType: "post",
     targetId: market,
     category: "spam",
-    details: "Please review Riley's market note. It was shared with Marcus, not with me.",
+    details: "Please review Riley's market note. Riley shared it with me.",
   });
   await escalateReport(db, quinn, spam, "Needs a senior moderator.");
   await escalateReport(db, avery, spam, "Passing this case to a manager.");

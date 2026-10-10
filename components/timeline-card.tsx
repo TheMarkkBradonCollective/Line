@@ -49,6 +49,7 @@ export function TimelineCard({ item, index = 0 }: { item: TimelineItem; index?: 
       className="animate-rise mb-2 bg-surface md:mb-4 md:overflow-hidden md:rounded-[24px] md:border md:border-line/60 md:shadow-e1"
       style={{ ["--i" as string]: Math.min(index, 6) }}
       data-testid="feed-card"
+      data-author={item.author.id}
     >
       {context ? (
         <div className="flex items-center gap-2.5 border-b border-line/60 px-4 py-2.5" title={item.provenance}>
@@ -118,6 +119,7 @@ export function TimelineCard({ item, index = 0 }: { item: TimelineItem; index?: 
         commentCount={item.commentCount}
         shareCount={item.shareCount}
         commentHref={`/post/${item.postId}#comments`}
+        dislike={item.author.id === item.toUserId ? null : { authorId: item.author.id, authorName: item.author.displayName }}
       />
     </article>
   );

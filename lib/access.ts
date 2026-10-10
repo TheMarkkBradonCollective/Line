@@ -51,7 +51,13 @@ export async function postAccess(db: Db, viewer: number | { id: number }, post: 
   if (!row.hidden && !row.blocked && row.shared) return "shared";
   // The author sent it to Followers and the viewer follows the author (now; unfollowing ends it).
   if (!row.hidden && !row.blocked && row.followed) return "follower";
-  return (await isModerator(db, viewerId)) ? "staff" : null;
+  // Staff can open a post only as a case file: they hold a moderation grant AND the post has been reported.
+  if (!(await isModerator(db, viewerId))) return null;
+  const reported = await db.get(
+    "SELECT 1 AS ok FROM reports WHERE target_type IN ('post', 'video') AND target_id = ? LIMIT 1",
+    [postId],
+  );
+  return reported ? "staff" : null;
 }
 
 export async function canViewPost(

@@ -1,3 +1,5 @@
+import fs from "fs";
+import { rulesMarkdown } from "../lib/rules";
 import type { Db } from "../lib/db";
 import { queuesForPermissions, ROLE_TEMPLATES } from "../lib/permissions";
 import { seed } from "./fixtures";
@@ -31,7 +33,17 @@ import {
   getDiscover,
   publishPost,
   shareToFollowers,
+  dislikePost,
+  undoDislike,
+  hideAuthor,
+  unhideAuthor,
+  listNotifications,
+  deleteProfile,
+  removeFriend,
+  createGroup,
+  expandRecipients,
 } from "../lib/social";
+import { createReport } from "../lib/staff";
 
 function check(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -176,7 +188,8 @@ for (const person of [marcus, jordan, alex, sam, riley, noah, mina]) {
 
 // Staff grants never turn into a feed.
 check((await getHomeFeed(db, morganStaff.id)).length === 0, "A manager's home feed is empty; moderation access is not a feed");
-check(await postAccess(db, morganStaff.id, river.id) === "staff", "A manager can open a post as a case file");
+check(await postAccess(db, morganStaff.id, river.id) === null, "Staff can't open an unreported post");
+check(await postAccess(db, morganStaff.id, market.id) === "staff", "A manager can open a reported post as a case file");
 check(!await canViewPost(db, morganStaff.id, river.id), "Case access does not count as seeing the post in lists");
 check((await profilePosts(db, morganStaff.id, marcus.id)).length === 0, "Staff profiles views follow the share rule too");
 
@@ -376,6 +389,107 @@ check(!(await canViewPost(db, gus, pub.postId)) && !(await canViewPost(db, finn,
 const leftovers = (await db.get("SELECT (SELECT COUNT(*) FROM shares WHERE post_id = ?) + (SELECT COUNT(*) FROM follower_shares WHERE post_id = ?) AS c", [pub.postId, pub.postId])) as { c: number };
 check(Number(leftovers.c) === 0, "Deleting a post removes its shares");
 
+// ── Dislike and hiding (private, viewer-only, not a block) ───────────────────
+{
+  const kim = await person("kim");
+  const lou = await person("lou");
+  const max = await person("max");
+  await befriend(kim, lou);
+  await befriend(kim, max);
+  await follow(db, lou, kim);
+  await follow(db, max, kim);
+  const a = await publishPost(db, kim, { kind: "text", body: "one", allowReshare: true, choice: { self: false, followers: true, friendIds: [lou, max], groupIds: [], listIds: [] } });
+  const b = await publishPost(db, kim, { kind: "text", body: "two", allowReshare: true, choice: { self: false, followers: true, friendIds: [lou, max], groupIds: [], listIds: [] } });
+  const home = async (u: number) => new Set((await getHomeFeed(db, u)).map((i) => i.postId));
+  const disc = async (u: number) => new Set((await getDiscover(db, u)).map((i) => i.post.id));
+  await dislikePost(db, lou, a.postId);
+  check(!(await home(lou)).has(a.postId) && !(await disc(lou)).has(a.postId), "Disliking hides the post from that viewer's Home and Discover");
+  check((await home(max)).has(a.postId) && (await disc(max)).has(a.postId), "A dislike hides the post for that viewer only");
+  check(await canViewPost(db, lou, a.postId), "Disliking is not a block: the post stays reachable by link");
+  const eng = await postEngagement(db, kim, a.postId);
+  check(eng && !("dislikeCount" in eng), "Dislikes are never counted publicly");
+  check(!(await listNotifications(db, kim)).some((n) => n.kind.includes("dislike")), "The author is never notified of a dislike");
+  await undoDislike(db, lou, a.postId);
+  check((await home(lou)).has(a.postId), "Undo restores a disliked post");
+  await hideAuthor(db, lou, kim);
+  check(!(await home(lou)).has(a.postId) && !(await home(lou)).has(b.postId) && (await disc(lou)).size === 0, "Hiding a person hides all their posts in Home and Discover");
+  check(await areFriendsTest(kim, lou), "Hiding is not unfriending");
+  await unhideAuthor(db, lou, kim);
+  check((await home(lou)).has(b.postId) && (await disc(lou)).has(b.postId), "Unhiding restores them");
+  check(await threw(() => dislikePost(db, kim, a.postId)), "You can't dislike your own post");
+  check(await threw(() => dislikePost(db, ike, a.postId)), "You can't dislike a post you can't see");
+}
+
+async function areFriendsTest(x: number, y: number) {
+  return Boolean(await db.get("SELECT 1 AS ok FROM friendships WHERE status = 'accepted' AND ((requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?))", [x, y, y, x]));
+}
+
+// ── Edge cases from the audit ────────────────────────────────────────────────
+{
+  const ned = await person("ned");
+  const ola = await person("ola");
+  const pia = await person("pia");
+  const ray = await person("ray");
+  await befriend(ned, ola);
+  await befriend(ola, pia);
+  await befriend(ned, ray);
+
+  // Unfriending mid-chain: what you already received stays; new direct shares need friendship again.
+  const p1 = await publishPost(db, ned, { kind: "text", body: "chain", allowReshare: true, choice: { self: false, friendIds: [ola], groupIds: [], listIds: [] } });
+  await sharePost(db, { postId: p1.postId, fromUserId: ola, recipients: [{ userId: pia, shareKind: "direct" }] });
+  await removeFriend(db, ned, ola);
+  check(await canViewPost(db, ola, p1.postId) && await canViewPost(db, pia, p1.postId), "Unfriending doesn't take back shares already received");
+  const p2 = await publishPost(db, ned, { kind: "text", body: "after", allowReshare: true, choice: { self: true, friendIds: [], groupIds: [], listIds: [] } });
+  const again = await sharePost(db, { postId: p2.postId, fromUserId: ned, recipients: [{ userId: ola, shareKind: "direct" }] });
+  check(again.created.length === 0, "After unfriending, direct shares to that person are refused");
+
+  // Group membership changes: a group share goes to who was in it at send time.
+  const gid = await createGroup(db, ned, "crew", [ray], true);
+  const g1 = await publishPost(db, ned, { kind: "text", body: "to crew", allowReshare: true, choice: { self: false, friendIds: [], groupIds: [gid], listIds: [] } });
+  check(await canViewPost(db, ray, g1.postId), "Group members at send time receive a group share");
+  await db.run("INSERT INTO friend_group_members (group_id, user_id) VALUES (?, ?)", [gid, ola]);
+  check(!(await canViewPost(db, ola, g1.postId)), "Someone added to a group later doesn't get earlier group shares");
+  const g2 = await expandRecipients(db, ned, { self: false, friendIds: [], groupIds: [gid], listIds: [] });
+  const g2share = await publishPost(db, ned, { kind: "text", body: "crew 2", allowReshare: true, choice: { self: false, friendIds: [], groupIds: [gid], listIds: [] } });
+  check(g2.recipients.length === 2 && !(await canViewPost(db, ola, g2share.postId)), "Group shares still only reach friends (non-friend group members are refused)");
+
+  // Blocks: blocking ends access to shared and Followers posts, and removes follows.
+  await follow(db, ray, ned);
+  const fp = await publishPost(db, ned, { kind: "text", body: "fol", allowReshare: true, choice: { self: false, followers: true, friendIds: [ray], groupIds: [], listIds: [] } });
+  await blockUser(db, ned, ray);
+  check(!(await canViewPost(db, ray, fp.postId)), "A block ends access to the blocker's posts, shared or Followers");
+  check(!(await db.get("SELECT 1 AS ok FROM follows WHERE follower_id = ? AND followee_id = ?", [ray, ned])), "A block removes follows both ways");
+  check(!(await listNotifications(db, ray)).some((n) => n.actor_id === ned), "Notifications from across a block are hidden");
+  await unblockUser(db, ned, ray);
+
+  // Notifications never show a post you can no longer see.
+  const sv = await publishPost(db, ned, { kind: "text", body: "secret body", allowReshare: true, choice: { self: false, friendIds: [], groupIds: [], listIds: [], followers: true } });
+  await follow(db, pia, ned);
+  await befriend(pia, ned);
+  await sharePost(db, { postId: sv.postId, fromUserId: ned, recipients: [{ userId: pia, shareKind: "direct" }] });
+  check((await listNotifications(db, pia)).some((n) => n.post_id === sv.postId), "A share notification shows up");
+  await deletePost(db, ned, sv.postId);
+  check(!(await listNotifications(db, pia)).some((n) => n.post_id === sv.postId || n.post_body === "secret body"), "Notifications of deleted posts disappear");
+
+  // Reports: you can only report what you can see.
+  const hidden = await publishPost(db, ned, { kind: "text", body: "not for ola", allowReshare: true, choice: { self: true, friendIds: [], groupIds: [], listIds: [] } });
+  check(await threw(() => createReport(db, ola, { targetType: "post", targetId: hidden.postId, category: "spam", details: "" })), "You can't report a post you can't see");
+
+  // Share counts ignore "just me" self-shares.
+  check((await postEngagement(db, ned, hidden.postId))!.shareCount === 0, "A self-share isn't counted as a share");
+
+  // Account deletion removes the profile and everything that hangs off it.
+  const gone = await person("gone");
+  await befriend(gone, ned);
+  const gp = await publishPost(db, gone, { kind: "text", body: "bye", allowReshare: true, choice: { self: false, friendIds: [ned], groupIds: [], listIds: [] } });
+  await deleteProfile(db, gone);
+  check(!(await canViewPost(db, ned, gp.postId)), "Deleting an account deletes its posts for everyone");
+  check(!(await db.get("SELECT 1 AS ok FROM friendships WHERE requester_id = ? OR addressee_id = ?", [gone, gone])), "Deleting an account removes its friendships");
+}
+
+// The rules doc matches the in-app rules (single source in lib/rules.ts).
+check(fs.readFileSync("docs/RULES.md", "utf8") === rulesMarkdown(), "docs/RULES.md is out of date; run npm run docs:rules");
+
 // Lockdown: RLS on every LINE table and no grants for the browser roles.
 for (const table of LINE_TABLES) {
   const row = (await db.get(
@@ -399,6 +513,7 @@ console.log("Jordan's profile shows Marcus only what Jordan sent him. Noah's pro
 console.log("Riley's hall reel can't be opened by Marcus by URL, media, or Reels.");
 console.log("Comments and reactions on the river note are hidden from Alex.");
   console.log("Followers posts reach current followers only; follower chains go friend to friend; only authors use Followers; direct shares are friends only; delete removes access and media.");
+  console.log("Dislikes and hidden people are private and per-viewer; unhide restores. Audit edge cases: unfriending, group changes, blocks, notifications, reports, self-share counts, account deletion.");
   console.log("Posts can only use the author's own uploads. Every table has RLS on and no browser grants.");
 }
 

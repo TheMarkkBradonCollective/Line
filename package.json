@@ -11,7 +11,8 @@
     "make-founder": "tsx --conditions=react-server scripts/make-founder.ts",
     "db:reset": "tsx --conditions=react-server scripts/reset-db.ts",
     "build:apk": "bash scripts/build-apk.sh",
-    "cap:sync": "cap sync android"
+    "cap:sync": "cap sync android",
+    "docs:rules": "tsx scripts/write-rules.ts"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",

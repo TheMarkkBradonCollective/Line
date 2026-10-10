@@ -8,7 +8,14 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { cleanUsername, ensureProfile, getCurrentUser } from "@/lib/session";
 import { confirmUploads, createUploadTargets, removeMedia, removeProfileImage, uploadProfileImage, type UploadRequest, type UploadTarget } from "@/lib/storage";
 import { supabaseServer } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
+  accountMediaPaths,
+  deleteProfile,
+  dislikePost,
+  undoDislike,
+  hideAuthor,
+  unhideAuthor,
   deletePost,
   follow,
   unfollow,
@@ -689,5 +696,104 @@ export async function profileImageAction(formData: FormData) {
     await removeProfileImage(old).catch(() => undefined);
     revalidatePath("/profile");
     redirect(withQuery("/profile", "notice", which === "cover" ? "Cover photo updated." : "Profile photo updated."));
+  });
+}
+
+/** Dislike: hide a post from my Home and Discover. Private; nobody is notified. */
+export async function dislikeAction(postId: number): Promise<{ ok: boolean; authorId?: number; error?: string }> {
+  const user = await getCurrentUser();
+  if (!user || user.suspended) return { ok: false, error: "Sign in first." };
+  try {
+    const authorId = await dislikePost(getDb(), user.id, Number(postId));
+    revalidatePath("/timeline");
+    revalidatePath("/discover");
+    return { ok: true, authorId };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Couldn’t hide that." };
+  }
+}
+
+export async function undoDislikeAction(postId: number) {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false };
+  await undoDislike(getDb(), user.id, Number(postId));
+  revalidatePath("/timeline");
+  revalidatePath("/discover");
+  return { ok: true };
+}
+
+/** Hide all posts from a person in my Home and Discover. Not a block. */
+export async function hideAuthorAction(authorId: number) {
+  const user = await getCurrentUser();
+  if (!user || user.suspended) return { ok: false };
+  try {
+    await hideAuthor(getDb(), user.id, Number(authorId));
+  } catch {
+    return { ok: false };
+  }
+  revalidatePath("/timeline");
+  revalidatePath("/discover");
+  return { ok: true };
+}
+
+export async function unhideAuthorAction(authorId: number) {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false };
+  await unhideAuthor(getDb(), user.id, Number(authorId));
+  revalidatePath("/timeline");
+  revalidatePath("/discover");
+  return { ok: true };
+}
+
+export async function unhideFormAction(formData: FormData) {
+  await run("/hidden", async (user) => {
+    const db = getDb();
+    if (formData.get("authorId")) await unhideAuthor(db, user.id, Number(formData.get("authorId")));
+    if (formData.get("postId")) await undoDislike(db, user.id, Number(formData.get("postId")));
+    revalidatePath("/timeline");
+    revalidatePath("/discover");
+    redirect(withQuery("/hidden", "notice", "Unhidden."));
+  });
+}
+
+/** Password reset email. Always answers the same way so it never reveals whether an email has an account. */
+export async function forgotPasswordAction(formData: FormData) {
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    const supabase = await supabaseServer();
+    await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${await siteOrigin()}/auth/confirm?next=/reset-password` }).catch(() => undefined);
+  }
+  redirect(withQuery("/", "notice", "If that email has a LINE account, a reset link is on its way."));
+}
+
+export async function updatePasswordAction(formData: FormData) {
+  const password = String(formData.get("password") || "");
+  if (password.length < 8) redirect(withQuery("/reset-password", "error", "Use a password of at least 8 characters."));
+  if (password !== String(formData.get("confirm") || "")) redirect(withQuery("/reset-password", "error", "The two passwords don’t match."));
+  const supabase = await supabaseServer();
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) redirect(withQuery("/reset-password", "error", authMessage(error.message)));
+  redirect(withQuery("/timeline", "notice", "Password updated."));
+}
+
+/**
+ * Delete my account: my posts (and their shares, comments, reactions), my files, my follows and friendships.
+ * Audit history stays (it has no foreign key). The Founder can't self-delete.
+ */
+export async function deleteAccountAction(formData: FormData) {
+  await run("/settings", async (user) => {
+    if (String(formData.get("confirm") || "").trim().toLowerCase() !== user.username) {
+      throw new Error(`Type your username (${user.username}) to confirm.`);
+    }
+    if (user.role === "founder") throw new Error("The Founder account can’t be deleted from the app.");
+    const db = getDb();
+    const paths = await accountMediaPaths(db, user.id);
+    const authId = await deleteProfile(db, user.id);
+    await removeMedia(paths.media).catch(() => undefined);
+    for (const p of paths.profile) await removeProfileImage(p).catch(() => undefined);
+    if (authId) await supabaseAdmin().auth.admin.deleteUser(authId).catch(() => undefined);
+    const supabase = await supabaseServer();
+    await supabase.auth.signOut();
+    redirect(withQuery("/", "notice", "Your account was deleted."));
   });
 }
