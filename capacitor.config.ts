@@ -11,7 +11,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 const serverUrl = process.env.CAPACITOR_SERVER_URL;
 
 const config: CapacitorConfig = {
-  appId: "social.line.share",
+  appId: "com.tmbcworks.line",
   appName: "LINE",
   webDir: "www",
   backgroundColor: "#ffffff",

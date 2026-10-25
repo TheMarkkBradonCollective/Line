@@ -63,7 +63,7 @@ export default function DownloadPage() {
         <div className="surface-card mt-6 flex gap-3 p-4 text-[13px] text-ink-2">
           <ShieldCheck className="h-5 w-5 shrink-0 text-brand" aria-hidden />
           <p>
-            Signed release build, package <code>social.line.share</code>. SHA-256:{" "}
+            Signed release build, package <code>com.tmbcworks.line</code>. SHA-256:{" "}
             <code className="break-all">{ANDROID_RELEASE.sha256}</code>. On iPhone? Just use the website and Add to Home Screen.
           </p>
         </div>

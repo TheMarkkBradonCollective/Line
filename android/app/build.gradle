@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "social.line.share"
+    namespace "com.tmbcworks.line"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "social.line.share"
+        applicationId "com.tmbcworks.line"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
