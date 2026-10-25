@@ -1,4 +1,4 @@
-package social.line.share;
+package com.tmbcworks.line;
 
 import com.getcapacitor.BridgeActivity;
 
