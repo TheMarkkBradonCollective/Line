@@ -31,17 +31,15 @@ export const LINE_TABLES = [
   "line_v3_marker",
 ] as const;
 
-const DIR = path.join(process.cwd(), "supabase", "migrations");
+const SCHEMA_FILE = path.join(process.cwd(), "db", "line_schema.sql");
 
 export function migrationFiles() {
-  return fs
-    .readdirSync(DIR)
-    .filter((name) => name.endsWith(".sql"))
-    .sort();
+  if (!fs.existsSync(SCHEMA_FILE)) throw new Error(`Missing ${SCHEMA_FILE}. Run db migration setup.`);
+  return ["line_schema.sql"];
 }
 
 /**
- * Applies supabase/migrations/*.sql in order to the current schema (search_path), once each.
+ * Applies db/line_schema.sql (full LINE schema) to the current schema (search_path), once.
  * Refuses to start if LINE's table names already exist without LINE's migration record,
  * so it never touches tables someone else created.
  */
@@ -69,7 +67,7 @@ export async function applyMigrations(db: Db, log: (line: string) => void = cons
   let applied = 0;
   for (const name of migrationFiles()) {
     if (done.has(name)) continue;
-    const text = fs.readFileSync(path.join(DIR, name), "utf8");
+    const text = fs.readFileSync(SCHEMA_FILE, "utf8");
     await db.tx(async (tx) => {
       await tx.exec(text);
       await tx.run("INSERT INTO line_schema_migrations (name) VALUES (?)", [name]);
@@ -81,8 +79,8 @@ export async function applyMigrations(db: Db, log: (line: string) => void = cons
   return applied;
 }
 
-/** Local Postgres has no Supabase auth schema or API roles. Create stand-ins so the same SQL runs. */
-export async function ensureSupabaseShims(db: Db) {
+/** Local Postgres has no auth schema or API roles. Create stand-ins so the same SQL runs. */
+export async function ensureAuthShims(db: Db) {
   await db.exec(`
     DO $$
     BEGIN

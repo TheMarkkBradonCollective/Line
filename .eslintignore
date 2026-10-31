@@ -1,0 +1,6 @@
+node_modules
+.open-next
+android
+.next
+next-env.d.ts
+scripts/test-v3-more.ts

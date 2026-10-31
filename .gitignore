@@ -24,3 +24,8 @@ android/.idea
 
 .capacitor
 /capacitor.config.json
+
+# Cloudflare / OpenNext build output and local secrets
+.open-next
+.wrangler
+.dev.vars*

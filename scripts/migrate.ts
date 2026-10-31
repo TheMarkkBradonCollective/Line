@@ -1,10 +1,9 @@
 /**
  * npm run db:migrate
- * Applies supabase/migrations to the database in DATABASE_URL (or SUPABASE_DB_URL), then makes sure
- * the private media bucket exists. Creates no users and no content: the live site starts empty.
+ * Applies db/line_schema.sql to Neon (DIRECT_DATABASE_URL or DATABASE_URL).
+ * Creates no users and no content. Media lives in R2 (wrangler.jsonc binding MEDIA).
  */
 import { createSql, Db, scriptDatabaseUrl } from "../lib/db";
-import { ensureMediaBucket, ensureProfileBucket } from "../lib/storage";
 import { applyMigrations } from "./lib/migrations";
 
 async function main() {
@@ -13,12 +12,6 @@ async function main() {
     await applyMigrations(new Db(sql));
   } finally {
     await sql.end({ timeout: 5 });
-  }
-  if (process.env.SUPABASE_SECRET_KEY && process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    console.log(`media bucket: ${await ensureMediaBucket()}`);
-    console.log(`profile bucket: ${await ensureProfileBucket()}`);
-  } else {
-    console.log("media bucket: skipped (set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY to check it)");
   }
 }
 

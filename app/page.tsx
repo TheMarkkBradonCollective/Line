@@ -111,7 +111,7 @@ export default async function HomePage({
               <Field label="Email" name="email" type="email" autoComplete="email" placeholder="you@example.com" required />
               <Field label="Password" name="password" type="password" autoComplete="new-password" required minLength={8} hint="At least 8 characters." />
               <SubmitButton>Create account</SubmitButton>
-              <p className="text-[12.5px] text-ink-3">We’ll email you a link to confirm your address.</p>
+              <p className="text-[12.5px] text-ink-3">Your email is your sign-in. You can reset your password from the sign-in page.</p>
             </form>
           ) : (
             <p className="surface-card p-4 text-sm text-ink-2">Sign-ups are closed right now. Check back soon.</p>

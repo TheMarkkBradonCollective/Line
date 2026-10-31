@@ -8,33 +8,96 @@ Flow: **Create → Share → Receive → Reshare → Continue.**
 
 **The full rules in plain language: [docs/RULES.md](docs/RULES.md)** (also in the app under Menu → How LINE works).
 
-## Run the website
+## Stack
+
+- **Next.js 15** on **Cloudflare Workers** via [@opennextjs/cloudflare](https://opennext.js.org/cloudflare)
+- **Neon Postgres** (`@neondatabase/serverless`, env `DATABASE_URL`)
+- **R2** private media bucket (`MEDIA` binding, bucket `line-media`)
+- **Self-hosted auth**: bcrypt passwords in `auth.users`, session cookie JWT (`AUTH_SECRET`)
+
+Copy `.env.example` to `.env.local` for local dev. Never commit secrets.
+
+## Run locally
 
 ```bash
 npm install
+cp .env.example .env.local
+# Set DATABASE_URL (Neon pooled or local Postgres), AUTH_SECRET (32+ chars)
+npm run db:migrate
 npm run dev
 ```
 
-Open [http://localhost:43921](http://localhost:43921).
+Open [http://localhost:43921](http://localhost:43921). Sign up or sign in with email and password.
 
-The first request creates `data/line.sqlite` and seeds the demo world. There are no passwords. On the home page, pick a person.
+`next dev` loads Cloudflare bindings from `wrangler.jsonc` (R2 `MEDIA` when configured).
 
-Reset the database:
+Reset all data (destructive):
 
 ```bash
-npm run db:reset
+npm run db:reset -- --yes
 ```
 
-The next request seeds it again.
+## Database
 
-Production-style start after a build:
+One idempotent schema file: `db/line_schema.sql` (merged from the former Supabase migrations).
 
 ```bash
+npm run db:migrate
+```
+
+Uses `DIRECT_DATABASE_URL` when set (Neon **direct** URI), otherwise `DATABASE_URL`.
+
+## Deploy to Cloudflare
+
+1. Create a Neon project and run `npm run db:migrate` against it once.
+2. Create R2 bucket `line-media` and enable R2 on the account.
+3. Build: `npm run cf:build`
+4. Set secrets (never in `wrangler.jsonc`):
+
+```bash
+npx wrangler secret put DATABASE_URL
+npx wrangler secret put AUTH_SECRET
+```
+
+5. Deploy: `npx wrangler deploy` (or `npm run deploy:preview` for the `preview` env on workers.dev)
+
+Optional public URL for password-reset links and Capacitor:
+
+```bash
+npx wrangler secret put NEXT_PUBLIC_SITE_URL   # or set in dashboard / .dev.vars locally
+```
+
+### Bindings and env (production)
+
+| Name | Kind | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | secret | Neon pooled Postgres connection string |
+| `AUTH_SECRET` | secret | HS256 key for session cookie and upload tickets (32+ chars) |
+| `MEDIA` | R2 binding | Private bucket `line-media` (`wrangler.jsonc`) |
+| `ASSETS` | static assets | OpenNext asset binding (automatic) |
+| `NEXT_PUBLIC_SITE_URL` | optional var | Canonical site URL for emails and deep links |
+
+Preview env (`wrangler deploy --env preview`) uses workers.dev; R2 may be omitted until R2 is enabled—media then falls back to `media_objects` in Postgres.
+
+## Import from Supabase
+
+Dry-run by default. Postgres copy:
+
+```bash
+SOURCE_DATABASE_URL='postgresql://…' DIRECT_DATABASE_URL='postgresql://…' npm run db:import
+SOURCE_DATABASE_URL='…' DIRECT_DATABASE_URL='…' SUPABASE_URL='…' SUPABASE_SERVICE_ROLE_KEY='…' npm run db:import -- --storage --write
+```
+
+JSON export fallback: `npm run db:import -- dump.json [--media-dir files/] [--write]`
+
+## Tests and lint
+
+```bash
+npm run test:core-rule   # throwaway Postgres schema (embedded DB if TEST_DATABASE_URL unset)
+npm run lint
 npm run build
-npm start
+npm run cf:build
 ```
-
-`npm start` also listens on port 43921.
 
 ## Design
 
@@ -79,32 +142,15 @@ Everything goes through it, on the server: the home feed (`getHomeFeed`), profil
 npm run test:core-rule
 ```
 
-The script builds a throwaway SQLite database and asserts:
-
-- Marcus’s river note, shared only with Jordan, is on Jordan’s timeline and not on Alex’s, Sam’s, or Marcus’s.
-- Riley’s market photo is shared with Marcus only. The hall Loop is shared with Noah only.
-- After Marcus passes the market photo to Alex, it appears on Alex’s timeline. Sam, Jordan, and Riley still do not have it.
-- Mina’s rooftop photo reaches Marcus through Alex and Jordan, and the timeline item reports that chain in order. Sam and Mina do not get it.
-- Every timeline row is a share addressed to that person.
-- On Jordan’s profile, Marcus sees only the sauce video, pancake Loop, and knife note Jordan sent him, never the Saturday kitchen peaches or timer Loop. Jordan sees all of his own posts. The Loops and Photos tabs follow the same rule.
-- Noah (not Marcus’s friend) has a viewable profile that shows Marcus no posts. Mina’s profile shows Marcus only the rooftop that reached him through the chain.
-- Riley’s hall Loop can’t be opened by Marcus by id, by media access, or through Loops. Noah can open it.
-- Alex can’t read, add, or count comments or reactions on the river note. Sam can’t read the rooftop comments.
-- The reshare chain gives Marcus the rooftop in his home feed. Sam doesn’t get it.
-- The home feed holds own posts, shows each post once, and every item passes the access check, for every seeded person.
-- A manager’s home feed is empty: case access is not a feed.
-- People search finds people by name; suggestions are friends of friends only.
-- A block closes the blocker’s profile and posts; unblocking restores what was shared.
-- Staff grants are explicit. Removing Moderator’s `review_reports` grant closes that queue even though the role title stays. Administrator does not have platform ownership. Founder does.
-- Audit rows cannot be updated or deleted.
+The script builds a throwaway Postgres schema and asserts share-first visibility, blocks, staff grants, groups, uploads, and audit immutability (see script output for the full list).
 
 ## Test data
 
-The live database starts empty: real sign-ups only, no demo accounts. The sample people and posts in `scripts/fixtures.ts` are only loaded into the throwaway database that `npm run test:core-rule` creates.
+Production starts empty: real sign-ups only. Sample people and posts in `scripts/fixtures.ts` load only into the throwaway DB used by `npm run test:core-rule`.
 
 ## Build the Android debug APK
 
-The `android/` project is a Capacitor shell around this website. The database stays on the Next.js server. The APK is not committed.
+The `android/` project is a Capacitor shell around this website. The database stays on the server. The APK is not committed.
 
 Requirements:
 
@@ -115,60 +161,25 @@ Requirements:
 npm run build:apk
 ```
 
-That command writes `android/local.properties` from `ANDROID_HOME`, runs `npx cap sync android`, then:
+Point the WebView at your deployed LINE URL:
 
 ```bash
-cd android && ./gradlew assembleDebug
+CAPACITOR_SERVER_URL=https://line.your-domain.example npm run build:apk
 ```
 
-The debug APK is:
+Without `CAPACITOR_SERVER_URL`, the APK opens `www/index.html`, where you can type the server address.
 
-```text
-android/app/build/outputs/apk/debug/app-debug.apk
-```
+## Auth and media
 
-Point the WebView at a running LINE server before the Gradle build:
-
-```bash
-CAPACITOR_SERVER_URL=http://10.0.2.2:43921 npm run build:apk
-```
-
-`10.0.2.2` is the emulator’s address for the computer running `npm run dev`. A physical device needs your computer’s LAN address instead, and the dev server must be reachable from that device.
-
-Without `CAPACITOR_SERVER_URL`, the APK opens `www/index.html`, where you can type the server address. Cleartext HTTP is allowed so a local dev server works.
-
-If `ANDROID_HOME` is missing, `npm run build:apk` exits with instructions and does not invent a binary.
-
-## What works
-
-- Demo sign-in as a seeded person
-- Home feed of posts shared with you plus your own, with a composer and a Loops strip
-- Loops viewer (vertical swipe), only Loops shared with you
-- Reactions (Like, Love, Haha, Wow, Sad) and comments with replies, gated by the same rule
-- Public profiles with cover, About, friends, mutual friends, Add friend, Message, and Posts / Photos / Videos / Loops filtered to what reached you
-- Each feed item names who shared it and the chain it came down
-- Create text, photo (several frames), video, and Loops, then choose friends, groups, custom lists, or just yourself
-- Share and reshare into people’s feeds (not into a message inbox)
-- Friends: requests, accept, decline, remove, block, groups, lists, people you may know (mutual friends), people search by name
-- Who can share with you, who can add you, who can reshare
-- My Posts: recipients, reshares, whether it is in your own feed
-- Notifications for a share to you, a post shared onward, a reshared video, a comment on your post, and a reply to your comment
-- Reports on posts, videos, and profiles
-- Staff desk gated by explicit permission rows
-- Audit log (staff member, role, action, affected user or content, time, reason, previous state, new state, case id) that the database refuses to update or delete
-- Report queues and escalation
-- SQLite persistence
+- **Sign up / sign in / sign out** on the home page; sessions are httpOnly JWT cookies.
+- **Password reset**: forgot-password issues a one-hour signed link (`/reset-password?token=…`). Email sending is stubbed (TODO in `forgotPasswordAction`).
+- **Post media** lives in R2 (`u/…` paths). It is served only from `/media/[postId]/[index]` after `lib/access.ts` passes.
+- **Profile photos** use `p/…` paths and `/pm/…` (public profile assets).
 
 ## What is stubbed
 
-- Real photo and video upload, and all transcoding. Media is a chosen placeholder frame.
-- Push notifications. Alerts exist only inside the site.
-- Payments. The financial panel stores a note and does not charge anyone.
-- A full support CRM. Tickets are a short list with open, pending, and closed.
-- Email, SMS, and password sign-in. The home page is a person picker.
-- Direct messages. “Message” on a profile opens Create with that friend picked; the result is a post shared with just them.
-- Profile photos. The avatar is a color and initials.
-
-## Product rule in the data model
-
-`getTimeline` reads the `shares` table where `to_user_id` is the signed-in person. A post reaches someone only after `sharePost` writes a row addressed to that person. `getHomeFeed` is that timeline (one card per post) plus the viewer’s own posts, filtered again through `canViewPost`. New tables and columns: `comments` (with `parent_id` for replies), `posts.photos` (JSON frames for multi-photo posts), and `users.location` / `work` / `education` for About. Older databases pick these up on open.
+- Outbound email (password reset logs the link in dev).
+- Push notifications.
+- Payments and full support CRM.
+- Direct messages (Message → Create with one friend).
+- Video transcoding beyond stored uploads.

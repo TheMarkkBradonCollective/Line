@@ -2,7 +2,7 @@ import { canViewPost } from "@/lib/access";
 import { getDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { getPost } from "@/lib/social";
-import { signedMediaUrl } from "@/lib/storage";
+import { getObject } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ const NOT_FOUND = () =>
 /**
  * Media for a post. Same gate as the post page: you made it, it was shared to you,
  * or you are staff opening it as a case. Anything else is a 404, never a hint that it exists.
- * Only after the check passes does the server sign a short-lived URL for the private bucket.
+ * Only after the check passes does the server stream the file from the private R2 bucket.
  */
 export async function GET(_request: Request, context: { params: Promise<{ postId: string; index: string }> }) {
   const user = await getCurrentUser();
@@ -26,10 +26,16 @@ export async function GET(_request: Request, context: { params: Promise<{ postId
   if (!post || !(await canViewPost(db, user, post, { allowStaff: true }))) return NOT_FOUND();
   const frame = post.frames[at];
   if (!frame) return NOT_FOUND();
-  const url = await signedMediaUrl(frame.path);
-  if (!url) return NOT_FOUND();
-  return new Response(null, {
-    status: 302,
-    headers: { Location: url, "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" },
+  const obj = await getObject(frame.path);
+  if (!obj) return NOT_FOUND();
+  return new Response(obj.body, {
+    status: 200,
+    headers: {
+      "Content-Type": obj.mime,
+      "Content-Length": String(obj.size),
+      "Cache-Control": "private, no-store",
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+    },
   });
 }
