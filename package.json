@@ -12,16 +12,22 @@
     "db:reset": "tsx --conditions=react-server scripts/reset-db.ts",
     "build:apk": "bash scripts/build-apk.sh",
     "cap:sync": "cap sync android",
-    "docs:rules": "tsx scripts/write-rules.ts"
+    "docs:rules": "tsx scripts/write-rules.ts",
+    "db:import": "tsx --conditions=react-server scripts/import-supabase.ts",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf:build": "opennextjs-cloudflare build",
+    "deploy:preview": "opennextjs-cloudflare build && wrangler deploy --env preview",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",
     "@capacitor/cli": "^7.4.3",
     "@capacitor/core": "^7.4.3",
-    "@supabase/ssr": "^0.12.7",
-    "@supabase/supabase-js": "^2.117.3",
+    "@opennextjs/cloudflare": "^1.20.15",
+    "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "jose": "^6.2.14",
     "lucide-react": "^1.52.0",
     "next": "^15.5.4",
     "postgres": "^3.4.9",
@@ -39,6 +45,7 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.3",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "wrangler": "^4.156.0"
   }
 }

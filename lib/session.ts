@@ -1,19 +1,19 @@
 import "server-only";
 import { cache } from "react";
 import { getDb, type Db } from "./db";
-import { supabaseServer } from "./supabase/server";
+import { findAccountById, sessionAccountId } from "./auth";
 import { AVATAR_COLORS, getUserByAuthId } from "./social";
 import type { User } from "./types";
 
 export type AuthIdentity = { id: string; email: string | null; meta: Record<string, unknown> };
 
-/** The Supabase Auth account behind this request, verified on the server. */
+/** The LINE account behind this request: session cookie verified, account still exists. */
 export const getAuthIdentity = cache(async (): Promise<AuthIdentity | null> => {
-  const supabase = await supabaseServer();
-  const { data, error } = await supabase.auth.getClaims();
-  if (error || !data?.claims?.sub) return null;
-  const claims = data.claims as { sub: string; email?: string; user_metadata?: Record<string, unknown> };
-  return { id: claims.sub, email: claims.email ?? null, meta: claims.user_metadata ?? {} };
+  const id = await sessionAccountId();
+  if (!id) return null;
+  const account = await findAccountById(getDb(), id);
+  if (!account) return null;
+  return { id: account.id, email: account.email, meta: account.raw_user_meta_data ?? {} };
 });
 
 /** The LINE profile of the signed-in person. Created on first sign-in from the sign-up details. */

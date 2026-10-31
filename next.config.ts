@@ -16,3 +16,8 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
+// `next dev` gets the Cloudflare bindings (R2 MEDIA) from wrangler.jsonc.
+if (process.env.NODE_ENV === "development") {
+  void import("@opennextjs/cloudflare").then((m) => m.initOpenNextCloudflareForDev());
+}

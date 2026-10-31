@@ -6,7 +6,7 @@ import postgres from "postgres";
  * Postgres access for LINE. Server only.
  *
  * One small connection pool per server instance (one per Vercel function instance),
- * pointed at the Supabase pooler. Queries are written with `?` placeholders and run
+ * pointed at the Neon pooler (on Cloudflare Workers: one connection per request). Queries are written with `?` placeholders and run
  * through Db, which also memoizes a few lookups for the length of one request.
  * Nothing here is ever imported by a client component.
  */
@@ -25,7 +25,7 @@ export function databaseUrl() {
   const url = process.env.DATABASE_URL || "";
   if (!/^postgres(ql)?:\/\//.test(url)) {
     throw new Error(
-      "DATABASE_URL is not set to a Postgres connection string. Use the Supabase transaction pooler URI (Connect → Transaction pooler).",
+      "DATABASE_URL is not set to a Postgres connection string. Use the Neon pooled connection string.",
     );
   }
   return url;
@@ -33,11 +33,11 @@ export function databaseUrl() {
 
 const isPostgresUrl = (value: string | undefined): value is string => Boolean(value && /^postgres(ql)?:\/\//.test(value));
 
-/** Scripts (migrations, make-founder, reset) prefer the session pooler URI in SUPABASE_DB_URL. */
+/** Scripts (migrations, make-founder, reset) prefer the direct (non-pooled) URI in DIRECT_DATABASE_URL. */
 export function scriptDatabaseUrl() {
-  if (isPostgresUrl(process.env.SUPABASE_DB_URL)) return process.env.SUPABASE_DB_URL;
+  if (isPostgresUrl(process.env.DIRECT_DATABASE_URL)) return process.env.DIRECT_DATABASE_URL;
   if (isPostgresUrl(process.env.DATABASE_URL)) return process.env.DATABASE_URL;
-  throw new Error("Set SUPABASE_DB_URL (session pooler URI) or DATABASE_URL to a postgres:// connection string.");
+  throw new Error("Set DIRECT_DATABASE_URL (Neon direct URI) or DATABASE_URL to a postgres:// connection string.");
 }
 
 function isLocal(url: string) {
@@ -53,8 +53,22 @@ const INT8 = 20;
 const TIMESTAMP = 1114;
 const TIMESTAMPTZ = 1184;
 
+/** postgres.js passes unknown URL params to the server; Neon's channel_binding isn't a server setting. */
+function stripUrl(raw: string) {
+  try {
+    const url = new URL(raw);
+    url.searchParams.delete("channel_binding");
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
+
+/** Cloudflare Workers can't reuse a socket across requests, so each request opens its own. */
+export const onWorkers = typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+
 export function createSql(options: SqlOptions = {}): Sql {
-  const url = options.url ?? databaseUrl();
+  const url = stripUrl(options.url ?? databaseUrl());
   const schema = options.schema ?? process.env.DATABASE_SCHEMA;
   return postgres(url, {
     // Serverless: few connections per instance, closed quickly when idle.
@@ -62,7 +76,7 @@ export function createSql(options: SqlOptions = {}): Sql {
     idle_timeout: 15,
     max_lifetime: 60 * 10,
     connect_timeout: 15,
-    // The Supabase transaction pooler (port 6543) does not keep prepared statements.
+    // Neon's pooler (PgBouncer, transaction mode) does not keep prepared statements.
     prepare: false,
     ssl: isLocal(url) ? false : "require",
     onnotice: () => {},
@@ -181,4 +195,4 @@ function sharedSql() {
 }
 
 /** The request's Db. React's cache() gives each server request its own memo. */
-export const getDb = cache(() => new Db(sharedSql()));
+export const getDb = cache(() => new Db(onWorkers ? createSql({ max: 1 }) : sharedSql()));

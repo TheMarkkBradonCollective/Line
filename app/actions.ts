@@ -1,14 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { PERMISSIONS } from "@/lib/permissions";
 import { cleanUsername, ensureProfile, getCurrentUser } from "@/lib/session";
 import { confirmUploads, createUploadTargets, removeMedia, removeProfileImage, uploadProfileImage, type UploadRequest, type UploadTarget } from "@/lib/storage";
-import { supabaseServer } from "@/lib/supabase/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { createAccount, deleteAccount, endSession, findAccountByEmail, sessionAccountId, setPassword, startSession, verifyLogin } from "@/lib/auth";
 import { DEFAULT_TABS, normalizeTabs } from "@/lib/tab-bar";
 import { groupTargets, shareToGroup } from "@/lib/groups";
 import {
@@ -159,32 +157,16 @@ function shareSummary(created: number, rejected: { name: string; reason: string 
   return parts.join(" ") || "Nothing was sent.";
 }
 
-function authMessage(message: string) {
-  if (/invalid login credentials/i.test(message)) return "That email and password don’t match.";
-  if (/email not confirmed/i.test(message)) return "Confirm your email first. Check your inbox for the link.";
-  if (/already registered|already been registered/i.test(message)) return "That email already has an account. Sign in instead.";
-  if (/rate limit/i.test(message)) return "Too many tries. Wait a minute and try again.";
-  return message;
-}
-
-async function siteOrigin() {
-  const jar = await headers();
-  const fromRequest = jar.get("origin") || (jar.get("host") ? `${jar.get("x-forwarded-proto") ?? "https"}://${jar.get("host")}` : "");
-  return (process.env.NEXT_PUBLIC_SITE_URL || fromRequest || "http://localhost:43921").replace(/\/$/, "");
-}
-
 export async function signInAction(formData: FormData) {
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
   if (!email || !password) redirect(withQuery("/", "error", "Enter your email and password."));
-  const supabase = await supabaseServer();
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error || !data.user) redirect(withQuery("/", "error", authMessage(error?.message ?? "Could not sign in.")));
-  const profile = await ensureProfile(getDb(), { id: data.user.id, email: data.user.email ?? null, meta: data.user.user_metadata ?? {} });
-  if (profile.suspended) {
-    await supabase.auth.signOut();
-    redirect(withQuery("/", "error", "This account is suspended."));
-  }
+  const db = getDb();
+  const account = await verifyLogin(db, email, password);
+  if (!account) redirect(withQuery("/", "error", "That email and password don’t match."));
+  const profile = await ensureProfile(db, { id: account.id, email: account.email, meta: account.raw_user_meta_data ?? {} });
+  if (profile.suspended) redirect(withQuery("/", "error", "This account is suspended."));
+  await startSession(account.id);
   redirect("/timeline");
 }
 
@@ -201,23 +183,16 @@ export async function signUpAction(formData: FormData) {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) back("Enter a valid email address.");
   if (password.length < 8) back("Use a password of at least 8 characters.");
   if (await getUserByUsername(db, username)) back("That username is taken.");
-  const supabase = await supabaseServer();
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { username, display_name: displayName }, emailRedirectTo: `${await siteOrigin()}/auth/confirm` },
-  });
-  if (error) back(authMessage(error.message));
-  if (data.session && data.user) {
-    await ensureProfile(db, { id: data.user.id, email, meta: { username, display_name: displayName } });
-    redirect(withQuery("/timeline", "notice", "Welcome to LINE. Add friends, then share something with them."));
-  }
-  redirect(withQuery("/", "notice", "Check your email for a confirmation link, then sign in."));
+  if (await findAccountByEmail(db, email)) back("That email already has an account. Sign in instead.");
+  const meta = { username, display_name: displayName };
+  const accountId = await createAccount(db, email, password, meta);
+  await ensureProfile(db, { id: accountId, email, meta });
+  await startSession(accountId);
+  redirect(withQuery("/timeline", "notice", "Welcome to LINE. Add friends, then share something with them."));
 }
 
 export async function logoutAction() {
-  const supabase = await supabaseServer();
-  await supabase.auth.signOut();
+  await endSession();
   redirect("/");
 }
 
@@ -798,23 +773,22 @@ export async function unhideFormAction(formData: FormData) {
   });
 }
 
-/** Password reset email. Always answers the same way so it never reveals whether an email has an account. */
+/**
+ * Password reset by email isn't wired up yet (no email sender since the move off Supabase).
+ * Always answers the same way so it never reveals whether an email has an account.
+ */
 export async function forgotPasswordAction(formData: FormData) {
-  const email = String(formData.get("email") || "").trim().toLowerCase();
-  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    const supabase = await supabaseServer();
-    await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${await siteOrigin()}/auth/confirm?next=/reset-password` }).catch(() => undefined);
-  }
-  redirect(withQuery("/", "notice", "If that email has a LINE account, a reset link is on its way."));
+  void formData;
+  redirect(withQuery("/", "notice", "Email password resets are coming soon. Ask the LINE team to reset it for you."));
 }
 
 export async function updatePasswordAction(formData: FormData) {
   const password = String(formData.get("password") || "");
   if (password.length < 8) redirect(withQuery("/reset-password", "error", "Use a password of at least 8 characters."));
   if (password !== String(formData.get("confirm") || "")) redirect(withQuery("/reset-password", "error", "The two passwords don’t match."));
-  const supabase = await supabaseServer();
-  const { error } = await supabase.auth.updateUser({ password });
-  if (error) redirect(withQuery("/reset-password", "error", authMessage(error.message)));
+  const accountId = await sessionAccountId();
+  if (!accountId) redirect(withQuery("/", "error", "Sign in first."));
+  await setPassword(getDb(), accountId, password);
   redirect(withQuery("/timeline", "notice", "Password updated."));
 }
 
@@ -833,9 +807,8 @@ export async function deleteAccountAction(formData: FormData) {
     const authId = await deleteProfile(db, user.id);
     await removeMedia(paths.media).catch(() => undefined);
     for (const p of paths.profile) await removeProfileImage(p).catch(() => undefined);
-    if (authId) await supabaseAdmin().auth.admin.deleteUser(authId).catch(() => undefined);
-    const supabase = await supabaseServer();
-    await supabase.auth.signOut();
+    if (authId) await deleteAccount(db, authId).catch(() => undefined);
+    await endSession();
     redirect(withQuery("/", "notice", "Your account was deleted."));
   });
 }

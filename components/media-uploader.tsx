@@ -1,26 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { ImagePlus, Loader2, Trash2, Video } from "lucide-react";
 import { prepareUploadsAction } from "@/app/actions";
-import { IMAGE_TYPES, MAX_UPLOAD_BYTES, MEDIA_BUCKET, VIDEO_TYPES } from "@/lib/media-rules";
+import { IMAGE_TYPES, MAX_UPLOAD_BYTES, VIDEO_TYPES } from "@/lib/media-rules";
 import { cn } from "@/lib/utils";
 
 type Item = { key: string; name: string; mime: string; preview: string; path: string | null; state: "uploading" | "done" | "error"; message?: string };
 
-let browserClient: ReturnType<typeof createClient> | null = null;
-function storage() {
-  // Publishable key only. It can't read the private bucket; it can only use the one-time upload tokens the server signs.
-  browserClient ??= createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  return browserClient.storage.from(MEDIA_BUCKET);
+/** Sends one file to /api/upload with the server-signed ticket. */
+async function uploadWithTicket(token: string, file: File): Promise<{ error?: { message: string } }> {
+  try {
+    const res = await fetch(`/api/upload?ticket=${encodeURIComponent(token)}`, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+    if (res.ok) return {};
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    return { error: { message: data.error || "Upload failed." } };
+  } catch {
+    return { error: { message: "Upload failed." } };
+  }
 }
 
 /**
- * Photo and video picker for Create. Files go straight from the browser to the private bucket
- * using signed upload URLs, so large videos never pass through a serverless function.
+ * Photo and video picker for Create. Each file goes from the browser to /api/upload with a
+ * one-file ticket the server signed, and lands in the private R2 bucket.
  * The form then submits only the storage paths, and the server confirms them.
  */
 export function MediaUploader({ initialKind }: { initialKind: string }) {
@@ -95,7 +97,7 @@ export function MediaUploader({ initialKind }: { initialKind: string }) {
     await Promise.all(
       files.map(async (file, index) => {
         const target = result.targets[index];
-        const { error: uploadError } = await storage().uploadToSignedUrl(target.path, target.token, file, { contentType: file.type });
+        const { error: uploadError } = await uploadWithTicket(target.token, file);
         setItems((current) =>
           current.map((item) =>
             item.key === fresh[index].key

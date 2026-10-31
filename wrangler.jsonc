@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // LINE on Cloudflare Workers (OpenNext). Secrets are set with `wrangler secret put`, never here:
+  //   DATABASE_URL  Neon pooled connection string
+  //   AUTH_SECRET   32+ random characters (signs session cookies and upload tickets)
+  "name": "line",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "observability": { "enabled": true },
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "line-media" }],
+  "env": {
+    // Preview: workers.dev only, no custom domain/routes. No R2 binding until R2 is enabled on the
+    // account; media falls back to Postgres (media_objects) in the meantime.
+    "preview": {
+      "name": "line-preview",
+      "workers_dev": true,
+      "r2_buckets": []
+    }
+  }
+}

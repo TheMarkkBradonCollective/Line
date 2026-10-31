@@ -111,8 +111,8 @@ export const PROFILE_BUCKET = "line-profiles";
 export function profileImageUrl(path: string | null | undefined) {
   if (!path) return null;
   if (path.startsWith("/") || path.startsWith("https://")) return path;
-  const base = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
-  return `${base}/storage/v1/object/public/${PROFILE_BUCKET}/${path}`;
+  // Served by app/pm/[...path] from R2 (prefix p/ only).
+  return `/pm/${path}`;
 }
 
 export function mapPost(row: PostRow): Post {
