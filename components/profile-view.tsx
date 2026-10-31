@@ -25,7 +25,7 @@ import {
   Users,
   Video,
 } from "lucide-react";
-import { blockAction, followAction, unfollowAction, requestFriendAction, ticketAction, updateProfileAction } from "@/app/actions";
+import { followAction, unfollowAction, requestFriendAction, ticketAction, updateProfileAction } from "@/app/actions";
 import { Avatar, AvatarStack } from "@/components/avatar";
 import { EmptyState } from "@/components/empty-state";
 import { Notice } from "@/components/notice";

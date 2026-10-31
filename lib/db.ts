@@ -1,17 +1,22 @@
 import "server-only";
 import { cache } from "react";
+import { neonConfig, Pool } from "@neondatabase/serverless";
 import postgres from "postgres";
 
 /**
  * Postgres access for LINE. Server only.
  *
- * One small connection pool per server instance (one per Vercel function instance),
- * pointed at the Neon pooler (on Cloudflare Workers: one connection per request). Queries are written with `?` placeholders and run
- * through Db, which also memoizes a few lookups for the length of one request.
+ * Neon (@neondatabase/serverless) for remote databases; postgres.js for local Postgres
+ * (embedded DB in core-rule tests). On Cloudflare Workers each request opens its own pool
+ * connection. Queries use `?` placeholders via Db, with per-request memoization.
  * Nothing here is ever imported by a client component.
  */
 
-export type Sql = postgres.Sql<Record<string, unknown>>;
+export type Sql = {
+  unsafe(query: string, params?: unknown[]): Promise<unknown[] & { count: number }>;
+  begin<T>(work: (inner: Sql) => Promise<T>): Promise<T>;
+  end(options?: { timeout?: number }): Promise<void>;
+};
 type Param = string | number | boolean | null | undefined | Date | object;
 
 export type SqlOptions = {
@@ -67,12 +72,58 @@ function stripUrl(raw: string) {
 /** Cloudflare Workers can't reuse a socket across requests, so each request opens its own. */
 export const onWorkers = typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
 
+function neonRows<T extends Record<string, unknown>>(rows: T[], rowCount: number | null) {
+  const list = rows as unknown[] & { count: number };
+  list.count = rowCount ?? rows.length;
+  return list as unknown[] & { count: number };
+}
+
+function createNeonSql(url: string, max: number, schema?: string): Sql {
+  if (onWorkers) neonConfig.poolQueryViaFetch = true;
+  const pool = new Pool({
+    connectionString: url,
+    max,
+    idleTimeoutMillis: 15_000,
+    connectionTimeoutMillis: 15_000,
+    ...(schema ? { options: `-c search_path=${schema}` } : {}),
+  });
+  const unsafe = async (query: string, params: unknown[] = []) => {
+    const result = await pool.query(query, params);
+    return neonRows(result.rows as Record<string, unknown>[], result.rowCount);
+  };
+  return {
+    unsafe,
+    async begin<T>(work: (inner: Sql) => Promise<T>) {
+      const client = await pool.connect();
+      const innerUnsafe = async (query: string, params: unknown[] = []) => {
+        const result = await client.query(query, params);
+        return neonRows(result.rows as Record<string, unknown>[], result.rowCount);
+      };
+      const inner = { unsafe: innerUnsafe, begin: async (fn) => fn(inner), end: async () => {} } as Sql;
+      try {
+        await client.query("BEGIN");
+        const out = await work(inner);
+        await client.query("COMMIT");
+        return out;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    end: () => pool.end(),
+  };
+}
+
 export function createSql(options: SqlOptions = {}): Sql {
   const url = stripUrl(options.url ?? databaseUrl());
   const schema = options.schema ?? process.env.DATABASE_SCHEMA;
+  const max = options.max ?? Number(process.env.DATABASE_POOL_MAX || 3);
+  if (!isLocal(url)) return createNeonSql(url, max, schema);
   return postgres(url, {
     // Serverless: few connections per instance, closed quickly when idle.
-    max: options.max ?? Number(process.env.DATABASE_POOL_MAX || 3),
+    max,
     idle_timeout: 15,
     max_lifetime: 60 * 10,
     connect_timeout: 15,
@@ -137,11 +188,11 @@ export class Db {
     private readonly inTransaction = false,
   ) {}
 
-  async all(query: string, params: Param[] = []): Promise<any[]> {
+  async all(query: string, params: Param[] = []): Promise<unknown[]> {
     return (await this.sql.unsafe(toPg(query), clean(params))) as unknown as unknown[];
   }
 
-  async get(query: string, params: Param[] = []): Promise<any> {
+  async get(query: string, params: Param[] = []): Promise<unknown> {
     const rows = await this.all(query, params);
     return rows[0];
   }

@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { createSql, Db } from "../../lib/db";
-import { applyMigrations, ensureSupabaseShims } from "./migrations";
+import { applyMigrations, ensureAuthShims } from "./migrations";
 
 /**
  * A throwaway Postgres schema for tests. It never touches LINE's live tables:
@@ -31,7 +31,7 @@ export async function withTestDatabase(run: (db: Db) => Promise<void>) {
   const adminDb = new Db(admin);
   try {
     const hasAuth = (await adminDb.get("SELECT to_regclass('auth.users') IS NOT NULL AS ok")) as { ok: boolean };
-    if (!hasAuth.ok) await ensureSupabaseShims(adminDb);
+    if (!hasAuth.ok) await ensureAuthShims(adminDb);
     await adminDb.exec(`CREATE SCHEMA ${schema}`);
     const sql = createSql({ url, schema, max: 4 });
     try {

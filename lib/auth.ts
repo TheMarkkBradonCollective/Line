@@ -123,3 +123,23 @@ export async function readUploadTicket(token: string) {
     return null;
   }
 }
+
+/** One-hour link for forgot-password (no account enumeration in the UI). */
+export async function signPasswordResetToken(accountId: string) {
+  return new SignJWT({ kind: "password_reset" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(accountId)
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .sign(secret());
+}
+
+export async function verifyPasswordResetToken(token: string): Promise<string | null> {
+  try {
+    const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
+    if (payload.kind !== "password_reset") return null;
+    return typeof payload.sub === "string" ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}

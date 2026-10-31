@@ -313,7 +313,7 @@ export default async function StaffPage({
         <section className="grid gap-3">
           <h2 className="font-display text-xl font-bold tracking-tight">Security</h2>
           <p className="text-sm text-muted">
-            Sign-in is email and password through Supabase Auth. Email confirmation and redirect URLs are set in the Supabase dashboard. Staff actions always ask for a reason ({await getSetting(db, "staff_reason_required") === "1" ? "on" : "off"}).
+            Sign-in is email and password (LINE session cookie, bcrypt hashes in auth.users). Password reset links are signed JWTs; outbound email is not wired yet. Staff actions always ask for a reason ({await getSetting(db, "staff_reason_required") === "1" ? "on" : "off"}).
           </p>
           <SettingForm settingKey="security_note" label="Security note" value={await getSetting(db, "security_note")} />
         </section>

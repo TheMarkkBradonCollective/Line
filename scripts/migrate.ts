@@ -1,6 +1,6 @@
 /**
  * npm run db:migrate
- * Applies supabase/migrations to the Neon database in DIRECT_DATABASE_URL (or DATABASE_URL).
+ * Applies db/line_schema.sql to Neon (DIRECT_DATABASE_URL or DATABASE_URL).
  * Creates no users and no content. Media lives in R2 (wrangler.jsonc binding MEDIA).
  */
 import { createSql, Db, scriptDatabaseUrl } from "../lib/db";

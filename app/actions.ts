@@ -6,7 +6,18 @@ import { getDb } from "@/lib/db";
 import { PERMISSIONS } from "@/lib/permissions";
 import { cleanUsername, ensureProfile, getCurrentUser } from "@/lib/session";
 import { confirmUploads, createUploadTargets, removeMedia, removeProfileImage, uploadProfileImage, type UploadRequest, type UploadTarget } from "@/lib/storage";
-import { createAccount, deleteAccount, endSession, findAccountByEmail, sessionAccountId, setPassword, startSession, verifyLogin } from "@/lib/auth";
+import {
+  createAccount,
+  deleteAccount,
+  endSession,
+  findAccountByEmail,
+  sessionAccountId,
+  setPassword,
+  signPasswordResetToken,
+  startSession,
+  verifyLogin,
+  verifyPasswordResetToken,
+} from "@/lib/auth";
 import { DEFAULT_TABS, normalizeTabs } from "@/lib/tab-bar";
 import { groupTargets, shareToGroup } from "@/lib/groups";
 import {
@@ -773,13 +784,31 @@ export async function unhideFormAction(formData: FormData) {
   });
 }
 
-/**
- * Password reset by email isn't wired up yet (no email sender since the move off Supabase).
- * Always answers the same way so it never reveals whether an email has an account.
- */
+/** Token-based reset. Email delivery is stubbed (TODO). Same response whether or not the email exists. */
 export async function forgotPasswordAction(formData: FormData) {
-  void formData;
-  redirect(withQuery("/", "notice", "Email password resets are coming soon. Ask the LINE team to reset it for you."));
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const db = getDb();
+  const account = email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? await findAccountByEmail(db, email) : null;
+  if (account) {
+    const token = await signPasswordResetToken(account.id);
+    const base = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:43921").replace(/\/$/, "");
+    const link = `${base}/reset-password?token=${encodeURIComponent(token)}`;
+    // TODO: send password reset email (Resend, Cloudflare Email, etc.)
+    console.log("[password reset email TODO]", link);
+  }
+  redirect(withQuery("/", "notice", "If that email has an account, we sent a reset link."));
+}
+
+export async function resetPasswordFromTokenAction(formData: FormData) {
+  const token = String(formData.get("token") || "");
+  const tokenQuery = token ? `&token=${encodeURIComponent(token)}` : "";
+  const password = String(formData.get("password") || "");
+  if (password.length < 8) redirect(`/reset-password?error=${encodeURIComponent("Use a password of at least 8 characters.")}${tokenQuery}`);
+  if (password !== String(formData.get("confirm") || "")) redirect(`/reset-password?error=${encodeURIComponent("The two passwords don’t match.")}${tokenQuery}`);
+  const accountId = await verifyPasswordResetToken(token);
+  if (!accountId) redirect(withQuery("/?mode=forgot", "error", "That reset link expired. Send a new one."));
+  await setPassword(getDb(), accountId, password);
+  redirect(withQuery("/", "notice", "Password updated. Sign in with your new password."));
 }
 
 export async function updatePasswordAction(formData: FormData) {

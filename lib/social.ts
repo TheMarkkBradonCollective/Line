@@ -1686,7 +1686,7 @@ export async function accountMediaPaths(db: Db, userId: number) {
   return { media, profile: [me?.avatar_path ?? null, me?.cover_path ?? null].filter(Boolean) as string[] };
 }
 
-/** Removes the profile row; every table referencing it cascades. Returns the Supabase Auth id to delete. */
+/** Removes the profile row; every table referencing it cascades. Returns the auth.users id to delete. */
 export async function deleteProfile(db: Db, userId: number) {
   const row = (await db.get("SELECT auth_id FROM profiles WHERE id = ?", [userId])) as { auth_id: string | null } | undefined;
   await db.run("DELETE FROM profiles WHERE id = ?", [userId]);
